@@ -32,6 +32,7 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/oklog/run"
 	profilestorepb "github.com/parca-dev/parca/gen/proto/go/parca/profilestore/v1alpha1"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -42,10 +43,10 @@ import (
 
 	"github.com/parca-dev/parca-agent/pkg/agent"
 	"github.com/parca-dev/parca-agent/pkg/debuginfo"
+	"github.com/parca-dev/parca-agent/pkg/discovery"
 	"github.com/parca-dev/parca-agent/pkg/ksym"
 	"github.com/parca-dev/parca-agent/pkg/logger"
 	"github.com/parca-dev/parca-agent/pkg/template"
-	parcadebuginfo "github.com/parca-dev/parca/pkg/debuginfo"
 )
 
 var (
@@ -102,33 +103,25 @@ func main() {
 	ctx := context.Background()
 	var g run.Group
 
-	var (
-		err error
-		wc  profilestorepb.ProfileStoreServiceClient = agent.NewNoopProfileStoreClient()
-		dc  debuginfo.Client                         = debuginfo.NewNoopClient()
-	)
+	var wc profilestorepb.ProfileStoreServiceClient = agent.NewNoopProfileStoreClient()
+	var dc debuginfo.Client = debuginfo.NewNoopClient()
 
 	if len(flags.StoreAddress) > 0 {
-		conn, err := grpcConn(reg, flags)
+		_, err := grpcConn(reg, flags)
 		if err != nil {
 			level.Error(logger).Log("err", err)
 			os.Exit(1)
 		}
-
-		wc = profilestorepb.NewProfileStoreServiceClient(conn)
-		dc = parcadebuginfo.NewDebugInfoClient(conn)
 	}
 
 	ksymCache := ksym.NewKsymCache(logger)
 
 	var (
-		pm            *agent.PodManager
-		sm            *agent.SystemdManager
-		targetSources = []agent.TargetSource{}
-		batcher       = agent.NewBatchWriteClient(logger, wc)
+		batcher = agent.NewBatchWriteClient(logger, wc)
+		configs discovery.Configs
 	)
 
-	if flags.Kubernetes {
+	/*if flags.Kubernetes {
 		pm, err = agent.NewPodManager(
 			logger,
 			flags.ExternalLabel,
@@ -147,26 +140,29 @@ func main() {
 			os.Exit(1)
 		}
 		targetSources = append(targetSources, pm)
-	}
+	}*/
 
 	if len(flags.SystemdUnits) > 0 {
-		sm = agent.NewSystemdManager(
-			logger,
-			node,
+		configs = append(configs, discovery.NewSystemdConfig(
+			//logger,
+			//node,
 			flags.SystemdUnits,
-			flags.SamplingRatio,
-			flags.ExternalLabel,
-			ksymCache,
+			//flags.SamplingRatio,
+			//flags.ExternalLabel,
+			//ksymCache,
 			batcher,
-			dc,
-			flags.TempDir,
-			flags.ProfilingDuration,
-			flags.SystemdCgroupPath,
-		)
-		targetSources = append(targetSources, sm)
+			//dc,
+			//flags.TempDir,
+			//flags.ProfilingDuration,
+			//flags.SystemdCgroupPath,
+		))
 	}
 
-	m := agent.NewTargetManager(targetSources)
+	if flags.ExternalLabel == nil {
+		flags.ExternalLabel = map[string]string{}
+	}
+	flags.ExternalLabel["node"] = flags.Node
+	tm := discovery.NewTargetManager(logger, flags.ExternalLabel, ksymCache, wc, dc, flags.ProfilingDuration, flags.TempDir)
 
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -180,20 +176,29 @@ func main() {
 		}
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			activeProfilers := m.ActiveProfilers()
+			activeProfilers := tm.ActiveProfilers()
+
+			level.Debug(logger).Log(
+				"msg", "rendering web ui active profilers",
+				"no_of_profilers", len(activeProfilers),
+			)
 
 			statusPage := template.StatusPage{}
+
 			for _, activeProfiler := range activeProfilers {
 				profileType := ""
 				labelSet := labels.Labels{}
-				for _, label := range activeProfiler.Labels() {
-					if label.Name == "__name__" {
-						profileType = label.Value
+
+				for name, value := range activeProfiler.Labels() {
+					if name == "__name__" {
+						profileType = string(value)
 					}
-					if label.Name != "__name__" {
-						labelSet = append(labelSet, labels.Label{Name: label.Name, Value: label.Value})
+					if name != "__name__" {
+						labelSet = append(labelSet,
+							labels.Label{Name: string(name), Value: string(value)})
 					}
 				}
+
 				sort.Sort(labelSet)
 
 				q := url.Values{}
@@ -207,6 +212,7 @@ func main() {
 					Error:        activeProfiler.LastError(),
 					Link:         fmt.Sprintf("/query?%s", q.Encode()),
 				})
+
 			}
 
 			sort.Slice(statusPage.ActiveProfilers, func(j, k int) bool {
@@ -237,10 +243,11 @@ func main() {
 
 			return
 		}
+
 		if strings.HasPrefix(r.URL.Path, "/query") {
 			ctx := r.Context()
 			query := r.URL.Query().Get("query")
-			matchers, err := parser.ParseMetricSelector(query)
+			_, err := parser.ParseMetricSelector(query)
 			if err != nil {
 				http.Error(w, `query incorrectly formatted, expecting selector in form of: {name1="value1",name2="value2"}`, http.StatusBadRequest)
 				return
@@ -251,11 +258,12 @@ func main() {
 			// profiler running that matches the label-set.
 			ctx, cancel := context.WithTimeout(ctx, time.Second*11)
 			defer cancel()
-			profile, err := m.NextMatchingProfile(ctx, matchers)
+
+			/*profile, err := tm.NextMatchingProfile(ctx, matchers)
 			if profile == nil || err == context.Canceled {
 				http.Error(w, "No profile taken in the last 11 seconds that matches the requested label-matchers query. Profiles are taken every 10 seconds so either the profiler matching the label-set has stopped profiling, or the label-set was incorrect.", http.StatusNotFound)
 				return
-			}
+			}*/
 			if err != nil {
 				http.Error(w, "Unexpected error occurred: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -269,20 +277,21 @@ func main() {
 
 				fmt.Fprintf(w, "<p><a href='/query?%s'>Download Pprof</a></p>\n", q.Encode())
 				fmt.Fprint(w, "<code><pre>\n")
-				fmt.Fprint(w, profile.String())
+				//fmt.Fprint(w, profile.String())
 				fmt.Fprint(w, "\n</pre></code>")
 				return
 			}
 
 			w.Header().Set("Content-Type", "application/vnd.google.protobuf+gzip")
 			w.Header().Set("Content-Disposition", "attachment;filename=profile.pb.gz")
-			err = profile.Write(w)
+			//err = profile.Write(w)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to write profile", "err", err)
 			}
 			return
 		}
 		http.NotFound(w, r)
+
 	})
 
 	{
@@ -295,17 +304,44 @@ func main() {
 		})
 	}
 
-	if len(flags.SystemdUnits) > 0 {
+	var m *discovery.Manager
+	var err error
+
+	{
 		ctx, cancel := context.WithCancel(ctx)
+		m = discovery.NewManager(ctx, logger)
+		err = m.ApplyConfig(map[string]discovery.Configs{"systemd": configs})
+		if err != nil {
+			level.Error(logger).Log("err", err)
+			os.Exit(1)
+		}
+
+		level.Debug(logger).Log("msg", "in discovery manager run group", "after applyconfig", len(m.Targets)) //0
+
 		g.Add(func() error {
-			level.Debug(logger).Log("msg", "starting systemd manager")
-			return sm.Run(ctx)
+			level.Debug(logger).Log("msg", "starting discovery manager")
+			level.Debug(logger).Log("msg", "in discovery manager run group", "after Run", len(m.Targets)) //1
+
+			return m.Run()
 		}, func(error) {
 			cancel()
 		})
 	}
 
-	if flags.Kubernetes {
+	// Run group for target manager
+	{
+		ctx, cancel := context.WithCancel(ctx)
+		level.Debug(logger).Log("msg", "in target manager run group", "before Run", len(m.Targets)) //0
+
+		g.Add(func() error {
+			level.Debug(logger).Log("msg", "starting target manager")
+			return tm.Run(ctx, m.SyncCh())
+		}, func(error) {
+			cancel()
+		})
+	}
+
+	/*if flags.Kubernetes {
 		ctx, cancel := context.WithCancel(ctx)
 		g.Add(func() error {
 			level.Debug(logger).Log("msg", "starting pod manager")
@@ -313,7 +349,7 @@ func main() {
 		}, func(error) {
 			cancel()
 		})
-	}
+	}*/
 
 	{
 		ln, err := net.Listen("tcp", flags.HttpAddress)

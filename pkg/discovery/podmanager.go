@@ -11,8 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package agent
+package discovery
 
+/*
 import (
 	"context"
 	"fmt"
@@ -224,3 +225,4 @@ func (m *PodManager) ActiveProfilers() []Profiler {
 
 	return res
 }
+*/
