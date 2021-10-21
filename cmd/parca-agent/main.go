@@ -135,7 +135,7 @@ func main() {
 			flags.PodLabelSelector,
 			flags.SamplingRatio,
 			ksymCache,
-			&batcher, //NOTE: pass batcher instead
+			&batcher,
 			dc,
 			flags.TempDir,
 			flags.SocketPath,
@@ -156,7 +156,7 @@ func main() {
 			flags.SamplingRatio,
 			flags.ExternalLabel,
 			ksymCache,
-			&batcher, //NOTE: pass batcher instead
+			&batcher,
 			dc,
 			flags.TempDir,
 			flags.ProfilingDuration,

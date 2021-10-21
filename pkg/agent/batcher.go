@@ -78,9 +78,6 @@ func (batcher *Batcher) batchLoop(ctx context.Context) error {
 
 	}
 
-	fmt.Println("this is what the client is writing")
-	prettyPrint(profileSeries)
-
 	_, err := batcher.writeClient.WriteRaw(ctx,
 		&profilestorepb.WriteRawRequest{Series: profileSeries})
 
@@ -102,8 +99,4 @@ func (batcher *Batcher) Scheduler(labelset profilestorepb.LabelSet, samples []*p
 	} else {
 		batcher.series[&labelset] = samples
 	}
-
-	//	fmt.Println("\n batcher series from scheduler be %+v", batcher.series)
-
-	//	return *batcher
 }

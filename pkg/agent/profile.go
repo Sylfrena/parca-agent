@@ -448,23 +448,10 @@ func (p *CgroupProfiler) profileLoop(ctx context.Context, now time.Time, counts,
 		return err
 	}
 	labels := p.Labels()
-	/*_, err = p.writeClient.WriteRaw(ctx, &profilestorepb.WriteRawRequest{
-		Series: []*profilestorepb.RawProfileSeries{{
-			Labels: &profilestorepb.LabelSet{Labels: labels},
-			Samples: []*profilestorepb.RawSample{{
-				RawProfile: buf.Bytes(),
-			}},
-		}},
-	})*/
 
 	p.batcher.Scheduler(profilestorepb.LabelSet{Labels: labels},
 		[]*profilestorepb.RawSample{{RawProfile: buf.Bytes()}},
-	) //put this in batcher in a method
-
-	//fmt.Println("bytes thingy", boi)
-	fmt.Printf("\nlabels %+v \n", labels)
-
-	//fmt.Println("whole thingy", pro_batch)
+	)
 
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to send profile", "err", err)
