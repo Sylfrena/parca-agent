@@ -462,7 +462,7 @@ func (p *CgroupProfiler) profileLoop(ctx context.Context, now time.Time, counts,
 	) //put this in batcher in a method
 
 	//fmt.Println("bytes thingy", boi)
-	fmt.Println("\nlabels %+V", labels)
+	fmt.Printf("\nlabels %+v \n", labels)
 
 	//fmt.Println("whole thingy", pro_batch)
 

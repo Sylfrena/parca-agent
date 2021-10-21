@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 
 	"sync"
 	"time"
@@ -55,6 +56,13 @@ func (b *Batcher) Run(ctx context.Context) error {
 
 }
 
+func prettyPrint(series []*profilestorepb.RawProfileSeries) {
+	for _, prof := range series {
+		fmt.Printf("\n labels: %+v \n SERIES\n %+v",
+			prof.Labels, prof.Samples)
+	}
+}
+
 func (batcher *Batcher) batchLoop(ctx context.Context) error {
 
 	var profseries []*profilestorepb.RawProfileSeries
@@ -66,11 +74,15 @@ func (batcher *Batcher) batchLoop(ctx context.Context) error {
 		})
 
 	}
+
+	fmt.Println("this is what the client is writing")
+	prettyPrint(profseries)
+
 	_, err := batcher.writeClient.WriteRaw(ctx,
 		&profilestorepb.WriteRawRequest{Series: profseries})
 
 	if err != nil {
-		level.Error(batcher.logger).Log("msg", "failed to write profiles", "err", err)
+		level.Error(batcher.logger).Log("msg", "writeclient failed to send profiles", "err", err)
 		return err
 	}
 
@@ -84,6 +96,8 @@ func (batcher *Batcher) Scheduler(labelset profilestorepb.LabelSet, samples []*p
 	defer batcher.mtx.Unlock()
 
 	batcher.series[&labelset] = samples
+
+	//	fmt.Println("\n batcher series from scheduler be %+v", batcher.series)
 
 	return *batcher
 }
