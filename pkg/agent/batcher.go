@@ -22,8 +22,6 @@ type Batcher struct {
 	lastError          error
 }
 
-//parameters: max no of requests to batch, time interval
-
 func NewBatcher(wc profilestorepb.ProfileStoreServiceClient) *Batcher {
 	return &Batcher{
 		series:      make(map[*profilestorepb.LabelSet][]*profilestorepb.RawSample),
@@ -43,6 +41,7 @@ func (b *Batcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(20000000000)
 	defer ticker.Stop()
 
+	var err error
 	for {
 		select {
 		case <-ctx.Done():
@@ -53,6 +52,8 @@ func (b *Batcher) Run(ctx context.Context) error {
 		err := b.batchLoop(ctx)
 		b.loopReport(time.Now(), err)
 	}
+	b.series = make(map[*profilestorepb.LabelSet][]*profilestorepb.RawSample)
+	return err
 }
 
 func prettyPrint(series []*profilestorepb.RawProfileSeries) {
@@ -64,10 +65,13 @@ func prettyPrint(series []*profilestorepb.RawProfileSeries) {
 
 func (batcher *Batcher) batchLoop(ctx context.Context) error {
 
-	var profseries []*profilestorepb.RawProfileSeries
+	batcher.mtx.Lock()
+	defer batcher.mtx.Unlock()
+
+	var profileSeries []*profilestorepb.RawProfileSeries
 
 	for key, value := range batcher.series {
-		profseries = append(profseries, &profilestorepb.RawProfileSeries{
+		profileSeries = append(profileSeries, &profilestorepb.RawProfileSeries{
 			Labels:  key,
 			Samples: value,
 		})
@@ -75,30 +79,31 @@ func (batcher *Batcher) batchLoop(ctx context.Context) error {
 	}
 
 	fmt.Println("this is what the client is writing")
-	prettyPrint(profseries)
+	prettyPrint(profileSeries)
 
 	_, err := batcher.writeClient.WriteRaw(ctx,
-		&profilestorepb.WriteRawRequest{Series: profseries})
+		&profilestorepb.WriteRawRequest{Series: profileSeries})
 
 	if err != nil {
-		level.Error(batcher.logger).Log("msg", "writeclient failed to send profiles", "err", err)
+		level.Error(batcher.logger).Log("msg", "Writeclient failed to send profiles", "err", err)
 		return err
 	}
 
 	return nil
 }
 
-// map labelSet, sample
-func (batcher *Batcher) Scheduler(labelset profilestorepb.LabelSet, samples []*profilestorepb.RawSample) Batcher {
-	//agg(requests) -> batch
+func (batcher *Batcher) Scheduler(labelset profilestorepb.LabelSet, samples []*profilestorepb.RawSample) {
 	batcher.mtx.Lock()
 	defer batcher.mtx.Unlock()
 
-	batcher.series[&labelset] = samples
+	_, ok := batcher.series[&labelset]
+	if ok {
+		batcher.series[&labelset] = append(batcher.series[&labelset], samples...)
+	} else {
+		batcher.series[&labelset] = samples
+	}
 
 	//	fmt.Println("\n batcher series from scheduler be %+v", batcher.series)
 
-	return *batcher
+	//	return *batcher
 }
-
-//don't give channel access to implementation details
