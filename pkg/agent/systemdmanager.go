@@ -100,8 +100,6 @@ func NewSystemdManager(
 		tmpDir:            tmp,
 		profilingDuration: profilingDuration,
 	}
-
-	return g
 }
 
 func (m *SystemdManager) SetSink(sink func(Record)) {

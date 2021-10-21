@@ -40,7 +40,7 @@ func (b *Batcher) loopReport(lastProfileTakenAt time.Time, lastError error) {
 
 func (b *Batcher) Run(ctx context.Context) error {
 
-	ticker := time.NewTicker(profilingDuration)
+	ticker := time.NewTicker(20000000000)
 	defer ticker.Stop()
 
 	for {
@@ -53,7 +53,6 @@ func (b *Batcher) Run(ctx context.Context) error {
 		err := b.batchLoop(ctx)
 		b.loopReport(time.Now(), err)
 	}
-
 }
 
 func prettyPrint(series []*profilestorepb.RawProfileSeries) {
