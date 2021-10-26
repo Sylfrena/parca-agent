@@ -56,11 +56,27 @@ func (b *Batcher) Run(ctx context.Context) error {
 	return err
 }
 
-func prettyPrint(series []*profilestorepb.RawProfileSeries) {
+func PrettyPrint(series []*profilestorepb.RawProfileSeries) {
 	for _, prof := range series {
 		fmt.Printf("\n labels: %+v \n SERIES\n %+v",
 			prof.Labels, prof.Samples)
 	}
+}
+
+func PrintSeries(series map[*profilestorepb.LabelSet][]*profilestorepb.RawSample) {
+	var profileSeries []*profilestorepb.RawProfileSeries
+
+	for key, value := range series {
+		profileSeries = append(profileSeries, &profilestorepb.RawProfileSeries{
+			Labels:  key,
+			Samples: value,
+		})
+
+		fmt.Printf("\n %+v \t %+v \n", key.Labels, value)
+	}
+
+	//PrettyPrint(profileSeries)
+
 }
 
 func (batcher *Batcher) batchLoop(ctx context.Context) error {
@@ -77,6 +93,8 @@ func (batcher *Batcher) batchLoop(ctx context.Context) error {
 		})
 
 	}
+
+	PrettyPrint(profileSeries)
 
 	_, err := batcher.writeClient.WriteRaw(ctx,
 		&profilestorepb.WriteRawRequest{Series: profileSeries})
@@ -99,4 +117,6 @@ func (batcher *Batcher) Scheduler(labelset profilestorepb.LabelSet, samples []*p
 	} else {
 		batcher.series[&labelset] = samples
 	}
+
+	PrintSeries(batcher.series)
 }
