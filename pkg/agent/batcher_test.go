@@ -21,8 +21,7 @@ import (
 )
 
 func TestScheduler(t *testing.T) {
-	wc := NewNoopProfileStoreClient()
-	batcher := NewBatcher(wc)
+	batcher := NewBatcher()
 
 	labelset1 := profilestorepb.LabelSet{
 		Labels: []*profilestorepb.Label{{
@@ -37,15 +36,15 @@ func TestScheduler(t *testing.T) {
 		}},
 	}
 
-	labelsetHash1 := Hash(labelset1)
-	labelsetHash2 := Hash(labelset2)
+	labelsetHash1 := hash(labelset1)
+	labelsetHash2 := hash(labelset2)
 
 	samples1 := []*profilestorepb.RawSample{{RawProfile: []byte{11, 04, 96}}}
 	samples2 := []*profilestorepb.RawSample{{RawProfile: []byte{15, 11, 95}}}
 
 	t.Run("insertFirstProfile", func(t *testing.T) {
 
-		batcher.Scheduler(profilestorepb.RawProfileSeries{
+		batcher.Scheduler(&profilestorepb.RawProfileSeries{
 			Labels:  &labelset1,
 			Samples: samples1,
 		})
@@ -57,13 +56,13 @@ func TestScheduler(t *testing.T) {
 			},
 		}
 
+		t.Logf("%+v %+v", series[labelsetHash1].Samples, batcher.series[labelsetHash1].Samples)
 		require.Equal(t, series[labelsetHash1].Samples,
 			batcher.series[labelsetHash1].Samples)
 	})
 
 	t.Run("insertSecondProfile", func(t *testing.T) {
-
-		batcher.Scheduler(profilestorepb.RawProfileSeries{
+		batcher.Scheduler(&profilestorepb.RawProfileSeries{
 			Labels:  &labelset2,
 			Samples: samples2,
 		})
@@ -79,6 +78,9 @@ func TestScheduler(t *testing.T) {
 			},
 		}
 
+		t.Logf("%+v %+v", series[labelsetHash1].Samples, batcher.series[labelsetHash1].Samples)
+		t.Logf("%+v %+v", series[labelsetHash2].Samples, batcher.series[labelsetHash2].Samples)
+
 		require.Equal(t, series[labelsetHash1].Samples,
 			batcher.series[labelsetHash1].Samples)
 
@@ -88,7 +90,7 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("appendProfile", func(t *testing.T) {
 
-		batcher.Scheduler(profilestorepb.RawProfileSeries{
+		batcher.Scheduler(&profilestorepb.RawProfileSeries{
 			Labels:  &labelset1,
 			Samples: samples2,
 		})
@@ -103,6 +105,9 @@ func TestScheduler(t *testing.T) {
 				Samples: samples2,
 			},
 		}
+
+		t.Logf("%+v %+v", series[labelsetHash1].Samples, batcher.series[labelsetHash1].Samples)
+		t.Logf("%+v %+v", series[labelsetHash2].Samples, batcher.series[labelsetHash2].Samples)
 
 		require.Equal(t, series[labelsetHash1].Samples,
 			batcher.series[labelsetHash1].Samples)
@@ -121,7 +126,7 @@ func TestScheduler(t *testing.T) {
 			}},
 		}
 
-		labelsetHash := Hash(labelset)
+		labelsetHash := hash(labelset)
 
 		require.Equal(t, uint64(0xa3b730de852c2e2c), labelsetHash)
 	})

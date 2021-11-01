@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 
 	"sync"
 	"time"
@@ -13,19 +14,20 @@ import (
 )
 
 type Batcher struct {
-	series      map[uint64]*profilestorepb.RawProfileSeries
-	writeClient profilestorepb.ProfileStoreServiceClient
-	logger      log.Logger
+	series map[uint64]*profilestorepb.RawProfileSeries
+	//writeClient profilestorepb.ProfileStoreServiceClient
+	logger log.Logger
 
-	mtx                sync.RWMutex
+	mtx                *sync.RWMutex
 	lastProfileTakenAt time.Time
 	lastError          error
 }
 
-func NewBatcher(wc profilestorepb.ProfileStoreServiceClient) *Batcher {
+func NewBatcher() *Batcher {
 	return &Batcher{
-		series:      make(map[uint64]*profilestorepb.RawProfileSeries),
-		writeClient: wc,
+		series: make(map[uint64]*profilestorepb.RawProfileSeries),
+		//writeClient: wc,
+		mtx: &sync.RWMutex{},
 	}
 }
 
@@ -38,7 +40,7 @@ func (b *Batcher) loopReport(lastProfileTakenAt time.Time, lastError error) {
 
 func (b *Batcher) Run(ctx context.Context) error {
 	// TODO(Sylfrena): Make ticker duration configurable
-	const tickerDuration = 10000000000
+	const tickerDuration = 10 * time.Second
 
 	ticker := time.NewTicker(tickerDuration)
 	defer ticker.Stop()
@@ -52,20 +54,20 @@ func (b *Batcher) Run(ctx context.Context) error {
 		}
 
 		err := b.batchLoop(ctx)
+		b.series = make(map[uint64]*profilestorepb.RawProfileSeries)
+
 		b.loopReport(time.Now(), err)
 	}
-	b.series = make(map[uint64]*profilestorepb.RawProfileSeries)
 	return err
 }
 
-func (batcher *Batcher) batchLoop(ctx context.Context) error {
-
-	batcher.mtx.Lock()
-	defer batcher.mtx.Unlock()
+func (b *Batcher) batchLoop(ctx context.Context) error {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
 
 	var profileSeries []*profilestorepb.RawProfileSeries
 
-	for _, value := range batcher.series {
+	for _, value := range b.series {
 		profileSeries = append(profileSeries, &profilestorepb.RawProfileSeries{
 			Labels:  value.Labels,
 			Samples: value.Samples,
@@ -73,33 +75,24 @@ func (batcher *Batcher) batchLoop(ctx context.Context) error {
 
 	}
 
-	_, err := batcher.writeClient.WriteRaw(ctx,
+	fmt.Printf("sending it %+v", profileSeries)
+
+	_, err := b.WriteRaw(ctx,
 		&profilestorepb.WriteRawRequest{Series: profileSeries})
 
 	if err != nil {
-		level.Error(batcher.logger).Log("msg", "Writeclient failed to send profiles", "err", err)
+		level.Error(b.logger).Log("msg", "Writeclient failed to send profiles", "err", err)
 		return err
 	}
 
 	return nil
 }
 
-func (batcher *Batcher) Scheduler(profileSeries profilestorepb.RawProfileSeries) {
-	batcher.mtx.Lock()
-	defer batcher.mtx.Unlock()
+func (b *Batcher) Scheduler(profileSeries *profilestorepb.RawProfileSeries) {
 
-	labelsetHash := Hash(*profileSeries.Labels)
-
-	existing_sample, ok := batcher.series[labelsetHash]
-	if ok {
-		batcher.series[labelsetHash].Samples = append(existing_sample.Samples, profileSeries.Samples...)
-	} else {
-		batcher.series[labelsetHash] = &profilestorepb.RawProfileSeries{}
-		batcher.series[labelsetHash].Samples = profileSeries.Samples
-	}
 }
 
-func Hash(ls profilestorepb.LabelSet) uint64 {
+func hash(ls profilestorepb.LabelSet) uint64 {
 	var seps = []byte{'\xff'}
 	b := make([]byte, 0, 1024)
 	for _, v := range ls.Labels {
@@ -120,4 +113,25 @@ func Hash(ls profilestorepb.LabelSet) uint64 {
 		b = append(b, seps[0])
 	}
 	return xxhash.Sum64(b)
+}
+
+func (b *Batcher) WriteRaw(ctx context.Context, r *profilestorepb.WriteRawRequest) (*profilestorepb.WriteRawResponse, error) {
+
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	for _, profileSeries := range r.Series {
+		labelsetHash := hash(*profileSeries.Labels)
+
+		existing_sample, ok := b.series[labelsetHash]
+		if ok {
+			b.series[labelsetHash].Samples = append(existing_sample.Samples, profileSeries.Samples...)
+		} else {
+			b.series[labelsetHash] = &profilestorepb.RawProfileSeries{}
+			b.series[labelsetHash].Samples = profileSeries.Samples
+		}
+
+	}
+	return &profilestorepb.WriteRawResponse{}, nil
+
 }

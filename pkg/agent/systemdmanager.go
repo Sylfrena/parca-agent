@@ -39,6 +39,7 @@ type SystemdManager struct {
 	samplingRatio     float64
 	externalLabels    map[string]string
 	ksymCache         *ksym.KsymCache
+	writeClient       profilestorepb.ProfileStoreServiceClient
 	batcher           *Batcher
 	debugInfoClient   debuginfo.Client
 	sink              func(Record)
@@ -75,6 +76,7 @@ func NewSystemdManager(
 	samplingRatio float64,
 	externalLabels map[string]string,
 	ksymCache *ksym.KsymCache,
+	writeClient profilestorepb.ProfileStoreServiceClient,
 	batcher *Batcher,
 	debugInfoClient debuginfo.Client,
 	tmp string,
@@ -191,6 +193,7 @@ func (m *SystemdManager) reconcileUnit(ctx context.Context, unit string) error {
 		m.externalLabels,
 		m.ksymCache,
 		*m.batcher,
+		m.writeClient,
 		m.debugInfoClient,
 		&SystemdUnitTarget{
 			Name:     unit,

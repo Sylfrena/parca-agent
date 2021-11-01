@@ -124,7 +124,7 @@ func main() {
 		pm            *agent.PodManager
 		sm            *agent.SystemdManager
 		targetSources = []agent.TargetSource{}
-		batcher       = *agent.NewBatcher(wc)
+		batcher       = *agent.NewBatcher()
 	)
 
 	if flags.Kubernetes {

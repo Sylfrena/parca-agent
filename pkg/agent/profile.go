@@ -83,8 +83,9 @@ type CgroupProfiler struct {
 	sink              func(Record)
 	cancel            func()
 
-	pidMappingFileCache *maps.PidMappingFileCache
 	batcher             *Batcher
+	pidMappingFileCache *maps.PidMappingFileCache
+	writeClient         profilestorepb.ProfileStoreServiceClient
 	debugInfoExtractor  *debuginfo.Extractor
 
 	mtx                *sync.RWMutex
@@ -97,6 +98,7 @@ func NewCgroupProfiler(
 	externalLabels map[string]string,
 	ksymCache *ksym.KsymCache,
 	batcher Batcher,
+	writeClient profilestorepb.ProfileStoreServiceClient,
 	debugInfoClient debuginfo.Client,
 	target CgroupProfilingTarget,
 	profilingDuration time.Duration,
@@ -107,11 +109,12 @@ func NewCgroupProfiler(
 		logger:              logger,
 		externalLabels:      externalLabels,
 		ksymCache:           ksymCache,
+		batcher:             &batcher,
 		target:              target,
 		profilingDuration:   profilingDuration,
 		sink:                sink,
 		pidMappingFileCache: maps.NewPidMappingFileCache(logger),
-		batcher:             &batcher,
+		writeClient:         writeClient,
 		debugInfoExtractor: debuginfo.NewExtractor(
 			log.With(logger, "component", "debuginfoextractor"),
 			debugInfoClient,
@@ -449,7 +452,7 @@ func (p *CgroupProfiler) profileLoop(ctx context.Context, now time.Time, counts,
 	}
 	labels := p.Labels()
 
-	p.batcher.Scheduler(profilestorepb.RawProfileSeries{
+	p.batcher.Scheduler(&profilestorepb.RawProfileSeries{
 		Labels:  &profilestorepb.LabelSet{Labels: labels},
 		Samples: []*profilestorepb.RawSample{{RawProfile: buf.Bytes()}},
 	})

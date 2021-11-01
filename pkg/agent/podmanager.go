@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	profilestorepb "github.com/parca-dev/parca/gen/proto/go/parca/profilestore/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -51,6 +52,7 @@ type PodManager struct {
 	containerIDsByKey map[string]map[string]*CgroupProfiler
 	mtx               *sync.RWMutex
 
+	writeClient     profilestorepb.ProfileStoreServiceClient
 	batcher         *Batcher
 	debugInfoClient debuginfo.Client
 	sink            func(Record)
@@ -104,6 +106,7 @@ func (g *PodManager) Run(ctx context.Context) error {
 					g.externalLabels,
 					g.ksymCache,
 					*g.batcher,
+					g.writeClient,
 					g.debugInfoClient,
 					container,
 					g.profilingDuration,
