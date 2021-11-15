@@ -127,13 +127,11 @@ func (m *Manager) Run() error {
 		m.cancelDiscoverers()
 		return m.ctx.Err()
 	}
-	defer level.Debug(m.logger).Log("msg", "in discovery manager run ", "in Run", len(m.Targets))
 	return nil
 }
 
 // SyncCh returns a read only channel used by all the clients to receive target updates.
 func (m *Manager) SyncCh() <-chan map[string][]*Group {
-	level.Debug(m.logger).Log("msg", "in target manager sync", "no of targets", len(m.Targets)) //0
 	return m.syncCh
 }
 

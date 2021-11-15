@@ -93,29 +93,20 @@ func (m *TargetManager) reconcileTargets(ctx context.Context, targetSets map[str
 	level.Debug(m.logger).Log("msg", "reconciling targets")
 
 	for name, targetSet := range targetSets {
-		level.Debug(m.logger).Log("msg", "reconciling target group", "name", name)
+		level.Debug(m.logger).Log("msg", "reconciling target groups", "name", name)
 
 		if _, found := m.targetSets[name]; !found {
 			m.targetSets[name] = targetSet
 			profilerSet := []Profiler{}
 
-			level.Debug(m.logger).Log("msg", "enter if block", "targetset be", targetSet)
-
 			for _, targetGroup := range targetSet {
-				level.Debug(m.logger).Log("msg", "within outer inner loop")
-				level.Debug(m.logger).Log("msg", "within inner loop", "number of labels", targetGroup.Labels.String())
-				level.Debug(m.logger).Log("msg", "within inner loop", "source", targetGroup.Source)
-				level.Debug(m.logger).Log("msg", "within inner loop", "number of targets", len(targetGroup.Targets))
-
-				//so this is the problem, targets are not being assigned hm so it never enters the loop and creates a profiler
-				//labels are tho
+				level.Debug(m.logger).Log("msg", "iterating through targetgroups")
+				level.Debug(m.logger).Log("msg", "targetgroup: ", "labels ", targetGroup.Labels.String())
+				level.Debug(m.logger).Log("msg", "targetgroup: ", "source ", targetGroup.Source)
 
 				for _, target := range targetGroup.Targets {
 
-					level.Debug(m.logger).Log("msg", "within inner loop", "profile", target.String())
-
-					//how to return this and call run
-					//where to expect error
+					level.Debug(m.logger).Log("msg", "iterating through targets ", "target: ", target.String())
 
 					for k, v := range m.externalLabels {
 						target[model.LabelName(k)] = model.LabelValue(v)
@@ -127,7 +118,6 @@ func (m *TargetManager) reconcileTargets(ctx context.Context, targetSets map[str
 						m.writeClient,
 						m.debugInfoClient,
 						target,
-						//m.sink,
 						m.profilingDuration,
 						m.tmp,
 					)
@@ -152,12 +142,6 @@ func (m *TargetManager) ActiveProfilers() []Profiler {
 	defer m.mtx.RUnlock()
 
 	profilerSet := []Profiler{}
-
-	level.Debug(m.logger).Log(
-		"msg", "in ActiveProfilers(), tm",
-		"no_of_profilers", len(m.activeProfilers),
-	)
-
 	for _, profilers := range m.activeProfilers {
 
 		profilerSet = append(profilerSet, profilers...)

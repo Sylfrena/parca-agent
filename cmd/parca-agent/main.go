@@ -316,12 +316,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		level.Debug(logger).Log("msg", "in discovery manager run group", "after applyconfig", len(m.Targets)) //0
-
 		g.Add(func() error {
 			level.Debug(logger).Log("msg", "starting discovery manager")
-			level.Debug(logger).Log("msg", "in discovery manager run group", "after Run", len(m.Targets)) //1
-
 			return m.Run()
 		}, func(error) {
 			cancel()
@@ -331,8 +327,6 @@ func main() {
 	// Run group for target manager
 	{
 		ctx, cancel := context.WithCancel(ctx)
-		level.Debug(logger).Log("msg", "in target manager run group", "before Run", len(m.Targets)) //0
-
 		g.Add(func() error {
 			level.Debug(logger).Log("msg", "starting target manager")
 			return tm.Run(ctx, m.SyncCh())
