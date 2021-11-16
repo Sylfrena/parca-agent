@@ -70,7 +70,11 @@ func (l *ProfileListener) RemoveObserver(o *observer) {
 }
 
 func (l *ProfileListener) NextMatchingProfile(ctx context.Context, matchers []*labels.Matcher) (*profile.Profile, error) {
+<<<<<<< HEAD
 	pCh := make(chan []byte)
+=======
+	pCh := make(chan *profile.Profile)
+>>>>>>> a197feb (add listener, doesn't compile yet)
 	defer close(pCh)
 
 	o := l.Observe(func(r *profilestorepb.WriteRawRequest) {
