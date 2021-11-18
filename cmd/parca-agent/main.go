@@ -117,8 +117,9 @@ func main() {
 	ksymCache := ksym.NewKsymCache(logger)
 
 	var (
-		batcher = agent.NewBatchWriteClient(logger, wc)
-		configs discovery.Configs
+		batcher  = agent.NewBatchWriteClient(logger, wc)
+		configs  discovery.Configs
+		listener = agent.NewProfileListener(logger, batcher)
 	)
 
 	/*if flags.Kubernetes {
@@ -150,7 +151,7 @@ func main() {
 			//flags.SamplingRatio,
 			//flags.ExternalLabel,
 			//ksymCache,
-			batcher,
+			//batcher,
 			//dc,
 			//flags.TempDir,
 			//flags.ProfilingDuration,
@@ -162,7 +163,7 @@ func main() {
 		flags.ExternalLabel = map[string]string{}
 	}
 	flags.ExternalLabel["node"] = flags.Node
-	tm := discovery.NewTargetManager(logger, flags.ExternalLabel, ksymCache, wc, dc, flags.ProfilingDuration, flags.TempDir)
+	tm := discovery.NewTargetManager(logger, flags.ExternalLabel, ksymCache, listener, dc, flags.ProfilingDuration, flags.TempDir)
 
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -247,7 +248,7 @@ func main() {
 		if strings.HasPrefix(r.URL.Path, "/query") {
 			ctx := r.Context()
 			query := r.URL.Query().Get("query")
-			_, err := parser.ParseMetricSelector(query)
+			matchers, err := parser.ParseMetricSelector(query)
 			if err != nil {
 				http.Error(w, `query incorrectly formatted, expecting selector in form of: {name1="value1",name2="value2"}`, http.StatusBadRequest)
 				return
@@ -259,11 +260,11 @@ func main() {
 			ctx, cancel := context.WithTimeout(ctx, time.Second*11)
 			defer cancel()
 
-			/*profile, err := tm.NextMatchingProfile(ctx, matchers)
+			profile, err := listener.NextMatchingProfile(ctx, matchers)
 			if profile == nil || err == context.Canceled {
 				http.Error(w, "No profile taken in the last 11 seconds that matches the requested label-matchers query. Profiles are taken every 10 seconds so either the profiler matching the label-set has stopped profiling, or the label-set was incorrect.", http.StatusNotFound)
 				return
-			}*/
+			}
 			if err != nil {
 				http.Error(w, "Unexpected error occurred: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -277,7 +278,7 @@ func main() {
 
 				fmt.Fprintf(w, "<p><a href='/query?%s'>Download Pprof</a></p>\n", q.Encode())
 				fmt.Fprint(w, "<code><pre>\n")
-				//fmt.Fprint(w, profile.String())
+				fmt.Fprint(w, profile.String())
 				fmt.Fprint(w, "\n</pre></code>")
 				return
 			}

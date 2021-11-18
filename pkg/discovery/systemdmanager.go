@@ -26,7 +26,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/parca-dev/parca-agent/pkg/agent"
 	"github.com/prometheus/common/model"
 )
 
@@ -46,7 +45,7 @@ func (c *SystemdConfig) Name() string {
 	return "systemd"
 }
 
-func NewSystemdConfig(systemdUnits []string, batcher *agent.Batcher) *SystemdConfig {
+func NewSystemdConfig(systemdUnits []string /*batcher *agent.Batcher*/) *SystemdConfig {
 
 	units := map[string]struct{}{}
 

@@ -17,9 +17,12 @@ import (
 	"context"
 	"sync"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/google/pprof/profile"
 	profilestorepb "github.com/parca-dev/parca/gen/proto/go/parca/profilestore/v1alpha1"
-	"github.com/prometheus/tsdb/labels"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"google.golang.org/grpc"
 )
 
@@ -27,18 +30,34 @@ type ProfileListener struct {
 	next      profilestorepb.ProfileStoreServiceClient
 	observers []*observer
 	omtx      *sync.Mutex
+	logger    log.Logger
 }
 
-func NewProfileListener(next profilestorepb.ProfileStoreServiceClient) *ProfileListener {
-	return &ProfileListener{next: next}
+func NewProfileListener(logger log.Logger, next profilestorepb.ProfileStoreServiceClient) *ProfileListener {
+	return &ProfileListener{
+		next:      next,
+		observers: []*observer{},
+		omtx:      &sync.Mutex{},
+		logger:    logger,
+	}
 }
 
 func (l *ProfileListener) WriteRaw(ctx context.Context, r *profilestorepb.WriteRawRequest, opts ...grpc.CallOption) (*profilestorepb.WriteRawResponse, error) {
+	l.ObserveProfile(r)
 	return l.next.WriteRaw(ctx, r, opts...)
 }
 
 type observer struct {
 	f func(*profilestorepb.WriteRawRequest)
+}
+
+func (l *ProfileListener) ObserveProfile(r *profilestorepb.WriteRawRequest) {
+	l.omtx.Lock()
+	defer l.omtx.Unlock()
+
+	for _, o := range l.observers {
+		o.f(r)
+	}
 }
 
 func (l *ProfileListener) Observe(f func(*profilestorepb.WriteRawRequest)) *observer {
@@ -70,36 +89,51 @@ func (l *ProfileListener) RemoveObserver(o *observer) {
 }
 
 func (l *ProfileListener) NextMatchingProfile(ctx context.Context, matchers []*labels.Matcher) (*profile.Profile, error) {
-<<<<<<< HEAD
 	pCh := make(chan []byte)
-=======
-	pCh := make(chan *profile.Profile)
->>>>>>> a197feb (add listener, doesn't compile yet)
 	defer close(pCh)
+	level.Debug(l.logger).Log(
+		"msg", "entering in NextMatchingProfile",
+	)
 
 	o := l.Observe(func(r *profilestorepb.WriteRawRequest) {
-		profileLabels := map[string]string{}
 
-		//for _, series := range
+		level.Debug(l.logger).Log(
+			"msg", "entering in NextMatchingProfile Observe function",
+		)
 
-		for _, label := range r.Labels {
-			profileLabels[label.Name] = label.Value
-		}
+		var searchedSeries *profilestorepb.RawProfileSeries
 
-		for _, matcher := range matchers {
-			labelValue := profileLabels[matcher.Name]
-			if !matcher.Matches(labelValue) {
-				return
+		for _, series := range r.Series {
+			profileLabels := model.LabelSet{} //map[string]string{}
+
+			for _, label := range series.Labels.Labels {
+				profileLabels[model.LabelName(label.Name)] = model.LabelValue(label.Value)
 			}
+
+			level.Debug(l.logger).Log(
+				"msg", "in NextMatchingProfile",
+				"labels", profileLabels.String(),
+			)
+
+			for _, matcher := range matchers {
+				labelValue := profileLabels[model.LabelName(matcher.Name)]
+				if !matcher.Matches(string(labelValue)) {
+					continue
+				}
+			}
+			searchedSeries = series
+			break
 		}
 
-		pCh <- r.Profile.Copy()
+		if searchedSeries != nil {
+			pCh <- searchedSeries.Samples[len(searchedSeries.Samples)-1].RawProfile
+		}
 	})
 	defer l.RemoveObserver(o)
 
 	select {
 	case p := <-pCh:
-		return p, nil
+		return profile.ParseData(p)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
