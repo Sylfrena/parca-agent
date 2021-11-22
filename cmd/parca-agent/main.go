@@ -122,40 +122,38 @@ func main() {
 		listener = agent.NewProfileListener(logger, batcher)
 	)
 
-	/*if flags.Kubernetes {
-		pm, err = agent.NewPodManager(
-			logger,
-			flags.ExternalLabel,
-			node,
+	//if flags.Kubernetes {
+	//	pm, err = discovery.NewPodManager(
+	//		logger,
+	//		flags.ExternalLabel,
+	//		node,
+	//		flags.PodLabelSelector,
+	//		flags.SamplingRatio,
+	//		ksymCache,
+	//		batcher,
+	//		dc,
+	//		flags.TempDir,
+	//		flags.SocketPath,
+	//		flags.ProfilingDuration,
+	//	)
+	//	if err != nil {
+	//		level.Error(logger).Log("err", err)
+	//		os.Exit(1)
+	//	}
+	//	targetSources = append(targetSources, pm)
+	//}
+
+	if flags.Kubernetes {
+		configs = append(configs, discovery.NewPodConfig(
 			flags.PodLabelSelector,
-			flags.SamplingRatio,
-			ksymCache,
-			batcher,
-			dc,
-			flags.TempDir,
 			flags.SocketPath,
-			flags.ProfilingDuration,
-		)
-		if err != nil {
-			level.Error(logger).Log("err", err)
-			os.Exit(1)
-		}
-		targetSources = append(targetSources, pm)
-	}*/
+			flags.Node,
+		))
+	}
 
 	if len(flags.SystemdUnits) > 0 {
 		configs = append(configs, discovery.NewSystemdConfig(
-			//logger,
-			//node,
 			flags.SystemdUnits,
-			//flags.SamplingRatio,
-			//flags.ExternalLabel,
-			//ksymCache,
-			//batcher,
-			//dc,
-			//flags.TempDir,
-			//flags.ProfilingDuration,
-			//flags.SystemdCgroupPath,
 		))
 	}
 
@@ -311,10 +309,23 @@ func main() {
 	{
 		ctx, cancel := context.WithCancel(ctx)
 		m = discovery.NewManager(ctx, logger)
-		err = m.ApplyConfig(map[string]discovery.Configs{"systemd": configs})
-		if err != nil {
-			level.Error(logger).Log("err", err)
-			os.Exit(1)
+
+		if len(flags.SystemdUnits) > 0 {
+			err = m.ApplyConfig(map[string]discovery.Configs{"systemd": configs})
+
+			if err != nil {
+				level.Error(logger).Log("err", err)
+				os.Exit(1)
+			}
+		}
+
+		if flags.Kubernetes {
+			err = m.ApplyConfig(map[string]discovery.Configs{"pod": configs})
+
+			if err != nil {
+				level.Error(logger).Log("err", err)
+				os.Exit(1)
+			}
 		}
 
 		g.Add(func() error {

@@ -12,3 +12,122 @@
 // limitations under the License.
 
 package discovery
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/go-kit/log"
+	profilestorepb "github.com/parca-dev/parca/gen/proto/go/parca/profilestore/v1alpha1"
+	"github.com/prometheus/common/model"
+	v1 "k8s.io/api/core/v1"
+
+	"github.com/parca-dev/parca-agent/pkg/debuginfo"
+	"github.com/parca-dev/parca-agent/pkg/k8s"
+)
+
+type PodConfig struct {
+	podLabelSelector string
+	socketPath       string
+	nodeName         string
+}
+
+type PodDiscoverer struct {
+	logger log.Logger
+
+	podInformer *k8s.PodInformer
+	createdChan chan *v1.Pod
+	deletedChan chan string
+	k8sClient   *k8s.K8sClient
+
+	writeClient     profilestorepb.ProfileStoreServiceClient
+	debugInfoClient debuginfo.Client
+}
+
+func (c *PodConfig) Name() string {
+	return c.nodeName
+}
+
+func NewPodConfig(podLabel string, socketPath string, nodeName string) *PodConfig {
+	return &PodConfig{
+		podLabelSelector: podLabel,
+		socketPath:       socketPath,
+		nodeName:         nodeName,
+	}
+}
+
+func (c *PodConfig) NewDiscoverer(d DiscovererOptions) (Discoverer, error) {
+	createdChan := make(chan *v1.Pod)
+	deletedChan := make(chan string)
+
+	k8sClient, err := k8s.NewK8sClient(d.Logger, c.nodeName, c.socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("create k8s client: %w", err)
+	}
+
+	podInformer, err := k8s.NewPodInformer(d.Logger, c.nodeName, c.podLabelSelector, k8sClient.Clientset(), createdChan, deletedChan)
+	if err != nil {
+		return nil, err
+	}
+	g := &PodDiscoverer{
+		logger:      d.Logger,
+		podInformer: podInformer,
+		createdChan: createdChan,
+		deletedChan: deletedChan,
+		k8sClient:   k8sClient,
+	}
+	return g, nil
+}
+
+func (g *PodDiscoverer) Run(ctx context.Context, up chan<- []*Group) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case key := <-g.deletedChan:
+			// Prefix key with "pod/" to create identical key as podSourceFromNamespaceAndName()
+			group := []*Group{{Source: "pod/" + key}}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case up <- group:
+			}
+		case pod := <-g.createdChan:
+			containers := g.k8sClient.PodToContainers(pod)
+			groups := []*Group{buildPod(pod, containers)}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case up <- groups:
+			}
+		}
+	}
+}
+
+func buildPod(pod *v1.Pod, containers []*k8s.ContainerDefinition) *Group {
+	tg := &Group{
+		Source: podSourceFromNamespaceAndName(pod.Namespace, pod.Name),
+		Labels: model.LabelSet{},
+	}
+	// PodIP can be empty when a pod is starting or has been evicted.
+	if len(pod.Status.PodIP) == 0 {
+		return tg
+	}
+
+	tg.Labels["namespace"] = model.LabelValue(pod.ObjectMeta.Namespace)
+	tg.Labels["pod"] = model.LabelValue(pod.ObjectMeta.Name)
+
+	for _, container := range containers {
+		tg.Targets = append(tg.Targets, model.LabelSet{
+			"container":   model.LabelValue(container.ContainerName),
+			"containerid": model.LabelValue(container.ContainerId),
+		})
+	}
+
+	return tg
+}
+
+func podSourceFromNamespaceAndName(namespace, name string) string {
+	return "pod/" + namespace + "/" + name
+}
