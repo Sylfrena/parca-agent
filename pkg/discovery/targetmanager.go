@@ -122,7 +122,10 @@ func (m *TargetManager) reconcileTargets(ctx context.Context, targetSets map[str
 						m.tmp,
 					)
 
-					go newProfiler.Run(ctx)
+					go func() {
+						err := newProfiler.Run(ctx)
+						level.Debug(m.logger).Log("msg", "profiler ended with error", "error", err, "labels", newProfiler.Labels().String())
+					}()
 
 					profilerSet = append(profilerSet, newProfiler)
 				}

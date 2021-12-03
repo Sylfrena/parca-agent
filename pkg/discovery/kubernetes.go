@@ -119,9 +119,11 @@ func buildPod(pod *v1.Pod, containers []*k8s.ContainerDefinition) *Group {
 	tg.Labels["pod"] = model.LabelValue(pod.ObjectMeta.Name)
 
 	for _, container := range containers {
+
 		tg.Targets = append(tg.Targets, model.LabelSet{
-			"container":   model.LabelValue(container.ContainerName),
-			"containerid": model.LabelValue(container.ContainerId),
+			"container":         model.LabelValue(container.ContainerName),
+			"containerid":       model.LabelValue(container.ContainerId),
+			CgroupPathLabelName: model.LabelValue(container.PerfEventCgroupPath()),
 		})
 	}
 

@@ -233,6 +233,7 @@ func (p *CgroupProfiler) Run(ctx context.Context) error {
 
 	ticker := time.NewTicker(p.profilingDuration)
 	defer ticker.Stop()
+	level.Debug(p.logger).Log("msg", "start profiling loop", "labels", p.Labels())
 
 	for {
 		select {
@@ -242,7 +243,15 @@ func (p *CgroupProfiler) Run(ctx context.Context) error {
 		}
 
 		t := time.Now()
+
+		level.Debug(p.logger).Log("msg", "start capturing profile", "labels", p.Labels())
+
 		err := p.profileLoop(ctx, t, counts, stackTraces)
+		if err != nil {
+			level.Debug(p.logger).Log("msg", "profile loop error", "err", err)
+		}
+
+		level.Debug(p.logger).Log("msg", "finish capturing profile", "labels", p.Labels())
 
 		p.loopReport(t, err)
 	}

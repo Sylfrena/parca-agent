@@ -303,6 +303,7 @@ func main() {
 		})
 	}
 
+	// Run group for discovery manager
 	var m *discovery.Manager
 	var err error
 

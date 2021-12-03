@@ -138,7 +138,7 @@ func (c *SystemdDiscoverer) ReconcileUnit(ctx context.Context, unit string) (mod
 	if exists {
 		// profiler already running for this cgroup
 		return model.LabelSet{
-			"__cgroup_path__": model.LabelValue(fmt.Sprintf("/sys/fs/cgroup/perf_event/system.slice/%s/", unit)),
+			CgroupPathLabelName: model.LabelValue(fmt.Sprintf("/sys/fs/cgroup/perf_event/system.slice/%s/", unit)),
 		}, nil
 
 	}
@@ -148,7 +148,7 @@ func (c *SystemdDiscoverer) ReconcileUnit(ctx context.Context, unit string) (mod
 	c.unitProfilers[unit] = struct{}{}
 	c.mtx.Unlock()
 
-	return model.LabelSet{"__cgroup_path__": model.LabelValue(fmt.Sprintf("/sys/fs/cgroup/perf_event/system.slice/%s/", unit))}, nil
+	return model.LabelSet{CgroupPathLabelName: model.LabelValue(fmt.Sprintf("/sys/fs/cgroup/perf_event/system.slice/%s/", unit))}, nil
 }
 
 func retryingWriteFile(path string, data []byte, mode os.FileMode) error {

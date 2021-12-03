@@ -55,6 +55,8 @@ func (l *ProfileListener) ObserveProfile(r *profilestorepb.WriteRawRequest) {
 	l.omtx.Lock()
 	defer l.omtx.Unlock()
 
+	level.Debug(l.logger).Log("msg", "entering ObserveProfile")
+
 	for _, o := range l.observers {
 		o.f(r)
 	}
