@@ -109,7 +109,7 @@ func NewCgroupProfiler(
 	tmp string,
 ) *CgroupProfiler {
 	return &CgroupProfiler{
-		logger:              logger,
+		logger:              log.With(logger, "labels", target.String()),
 		ksymCache:           ksymCache,
 		target:              target,
 		profilingDuration:   profilingDuration,
@@ -233,7 +233,7 @@ func (p *CgroupProfiler) Run(ctx context.Context) error {
 
 	ticker := time.NewTicker(p.profilingDuration)
 	defer ticker.Stop()
-	level.Debug(p.logger).Log("msg", "start profiling loop", "labels", p.Labels())
+	level.Debug(p.logger).Log("msg", "start profiling loop")
 
 	for {
 		select {
@@ -244,14 +244,14 @@ func (p *CgroupProfiler) Run(ctx context.Context) error {
 
 		t := time.Now()
 
-		level.Debug(p.logger).Log("msg", "start capturing profile", "labels", p.Labels())
+		level.Debug(p.logger).Log("msg", "start capturing profile")
 
 		err := p.profileLoop(ctx, t, counts, stackTraces)
 		if err != nil {
 			level.Debug(p.logger).Log("msg", "profile loop error", "err", err)
 		}
 
-		level.Debug(p.logger).Log("msg", "finish capturing profile", "labels", p.Labels())
+		level.Debug(p.logger).Log("msg", "finish capturing profile")
 
 		p.loopReport(t, err)
 	}

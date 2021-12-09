@@ -184,35 +184,39 @@ func main() {
 
 			statusPage := template.StatusPage{}
 
-			for _, activeProfiler := range activeProfilers {
-				profileType := ""
-				labelSet := labels.Labels{}
+			for _, profilerSet := range activeProfilers {
+				for _, profiler := range profilerSet {
+					profileType := ""
+					labelSet := labels.Labels{}
 
-				for name, value := range activeProfiler.Labels() {
-					if name == "__name__" {
-						profileType = string(value)
+					for name, value := range profiler.Labels() {
+						if name == "__name__" {
+							profileType = string(value)
+						}
+						if name != "__name__" {
+							labelSet = append(labelSet,
+								labels.Label{Name: string(name), Value: string(value)})
+						}
 					}
-					if name != "__name__" {
-						labelSet = append(labelSet,
-							labels.Label{Name: string(name), Value: string(value)})
-					}
+
+					sort.Sort(labelSet)
+
+					q := url.Values{}
+					q.Add("debug", "1")
+					q.Add("query", labelSet.String())
+
+					statusPage.ActiveProfilers = append(statusPage.ActiveProfilers, template.ActiveProfiler{
+						Type:         profileType,
+						Labels:       labelSet,
+						LastTakenAgo: time.Since(profiler.LastProfileTakenAt()),
+						Error:        profiler.LastError(),
+						Link:         fmt.Sprintf("/query?%s", q.Encode()),
+					})
+
 				}
-
-				sort.Sort(labelSet)
-
-				q := url.Values{}
-				q.Add("debug", "1")
-				q.Add("query", labelSet.String())
-
-				statusPage.ActiveProfilers = append(statusPage.ActiveProfilers, template.ActiveProfiler{
-					Type:         profileType,
-					Labels:       labelSet,
-					LastTakenAgo: time.Since(activeProfiler.LastProfileTakenAt()),
-					Error:        activeProfiler.LastError(),
-					Link:         fmt.Sprintf("/query?%s", q.Encode()),
-				})
-
 			}
+
+			level.Debug(logger).Log("msg", "assembled active profilers", "length", len(statusPage.ActiveProfilers))
 
 			sort.Slice(statusPage.ActiveProfilers, func(j, k int) bool {
 				a := statusPage.ActiveProfilers[j].Labels
