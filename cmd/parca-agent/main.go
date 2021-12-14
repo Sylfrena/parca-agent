@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"google.golang.org/grpc"
@@ -161,7 +162,13 @@ func main() {
 		flags.ExternalLabel = map[string]string{}
 	}
 	flags.ExternalLabel["node"] = flags.Node
-	tm := discovery.NewTargetManager(logger, flags.ExternalLabel, ksymCache, listener, dc, flags.ProfilingDuration, flags.TempDir)
+
+	externalLabels := model.LabelSet{"node": model.LabelValue(flags.Node)}
+	for k, v := range flags.ExternalLabel {
+		externalLabels[model.LabelName(k)] = model.LabelValue(v)
+	}
+
+	tm := discovery.NewTargetManager(logger, externalLabels, ksymCache, listener, dc, flags.ProfilingDuration, flags.TempDir)
 
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("/debug/pprof/", pprof.Index)

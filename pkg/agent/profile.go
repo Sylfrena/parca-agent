@@ -125,6 +125,18 @@ func NewCgroupProfiler(
 	}
 }
 
+func (p *CgroupProfiler) GiveAddress() {
+	level.Debug(p.logger).Log("msg", "addresses",
+		"logger", unsafe.Pointer(uintptr(unsafe.Pointer(&p.logger))),
+		"ksymCache", unsafe.Pointer(uintptr(unsafe.Pointer(p.ksymCache))),
+		"target", unsafe.Pointer(uintptr(unsafe.Pointer(&p.target))),
+		"profilingDuration", unsafe.Pointer(uintptr(unsafe.Pointer(&p.profilingDuration))),
+		"pidMappingFileCache", unsafe.Pointer(uintptr(unsafe.Pointer(&p.pidMappingFileCache))),
+		"perfCache", unsafe.Pointer(uintptr(unsafe.Pointer(&p.perfCache))),
+		"writeClient", unsafe.Pointer(uintptr(unsafe.Pointer(&p.writeClient))),
+		"debugInfoExtractor", unsafe.Pointer(uintptr(unsafe.Pointer(&p.debugInfoExtractor))))
+}
+
 func (p *CgroupProfiler) loopReport(lastProfileTakenAt time.Time, lastError error) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
@@ -147,6 +159,8 @@ func (p *CgroupProfiler) LastError() error {
 }
 
 func (p *CgroupProfiler) Stop() {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
 	level.Debug(p.logger).Log("msg", "stopping cgroup profiler")
 	if p.cancel != nil {
 		p.cancel()
@@ -170,7 +184,10 @@ func (p *CgroupProfiler) Labels() model.LabelSet {
 
 func (p *CgroupProfiler) Run(ctx context.Context) error {
 	level.Debug(p.logger).Log("msg", "starting cgroup profiler")
+
+	p.mtx.Lock()
 	ctx, p.cancel = context.WithCancel(ctx)
+	p.mtx.Unlock()
 
 	m, err := bpf.NewModuleFromBufferArgs(bpf.NewModuleArgs{
 		BPFObjBuff: bpfObj,

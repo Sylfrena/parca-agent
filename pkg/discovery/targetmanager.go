@@ -15,8 +15,10 @@ package discovery
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -38,7 +40,7 @@ type Profiler interface {
 
 type ProfilerPool struct {
 	ctx               context.Context
-	mtx               *sync.Mutex
+	mtx               *sync.RWMutex
 	activeTargets     map[uint64]*Target
 	activeProfilers   map[uint64]Profiler
 	externalLabels    model.LabelSet
@@ -61,7 +63,7 @@ func NewProfilerPool(
 	tmp string) *ProfilerPool {
 	pp := &ProfilerPool{
 		ctx:               ctx,
-		mtx:               &sync.Mutex{},
+		mtx:               &sync.RWMutex{},
 		activeTargets:     map[uint64]*Target{},
 		activeProfilers:   map[uint64]Profiler{},
 		externalLabels:    externalLabels,
@@ -77,8 +79,8 @@ func NewProfilerPool(
 }
 
 func (pp *ProfilerPool) Profilers() []Profiler {
-	pp.mtx.Lock()
-	defer pp.mtx.Unlock()
+	pp.mtx.RLock()
+	defer pp.mtx.RUnlock()
 
 	res := make([]Profiler, 0, len(pp.activeProfilers))
 	for _, profiler := range pp.activeProfilers {
@@ -96,6 +98,9 @@ func (pp *ProfilerPool) Sync(tg []*Group) {
 	for _, newTargetGroup := range tg {
 		for _, t := range newTargetGroup.Targets {
 
+			level.Debug(pp.logger).Log("msg", "targetgroup: in sync ", "labels ", newTargetGroup.Labels.String())
+			level.Debug(pp.logger).Log("msg", "targetgroup: ", "source ", newTargetGroup.Source)
+
 			target := &Target{labelSet: model.LabelSet{}}
 
 			for labelName, labelValue := range t {
@@ -110,16 +115,22 @@ func (pp *ProfilerPool) Sync(tg []*Group) {
 				target.labelSet[labelName] = labelValue
 			}
 
+			level.Debug(pp.logger).Log("msg", "targetgroup: in sync ", "labels ", target.labelSet.String())
+
 			h := labelsetToLabels(target.labelSet).Hash()
 			newTargets[h] = target
 		}
 	}
+
+	var newProfilerAddress unsafe.Pointer
 
 	//add new targets and profile them
 	for _, newTarget := range newTargets {
 		h := labelsetToLabels(newTarget.labelSet).Hash()
 
 		if _, found := pp.activeTargets[h]; !found {
+
+			level.Debug(pp.logger).Log("msg", "iterating through pp.activetargets")
 
 			newProfiler := agent.NewCgroupProfiler(
 				pp.logger,
@@ -130,6 +141,8 @@ func (pp *ProfilerPool) Sync(tg []*Group) {
 				pp.profilingDuration,
 				pp.tmp,
 			)
+
+			newProfiler.GiveAddress()
 
 			go func() {
 				err := newProfiler.Run(pp.ctx)
@@ -145,7 +158,8 @@ func (pp *ProfilerPool) Sync(tg []*Group) {
 	for h := range pp.activeTargets {
 		if _, found := newTargets[h]; !found {
 
-			pp.activeProfilers[h].Stop()
+			level.Debug(pp.logger).Log("msg", "Sync: from before stop in targetmanager", "isitnewprofiler", &newProfilerAddress)
+			//			pp.activeProfilers[h].Stop()
 
 			delete(pp.activeTargets, h)
 			delete(pp.activeProfilers, h)
@@ -170,6 +184,7 @@ func labelsetToLabels(labelSet model.LabelSet) labels.Labels {
 			Value: string(v),
 		})
 	}
+	sort.Sort(ls)
 	return ls
 }
 
@@ -183,6 +198,14 @@ func toStringMap(labelSet model.LabelSet) map[string]string {
 	return m
 }
 
+func profilersetToLabels(p []Profiler) labels.Labels {
+	var labels labels.Labels
+	for _, l := range p {
+		labels = labelsetToLabels(l.Labels())
+	}
+	return labels
+}
+
 type Target struct {
 	labelSet model.LabelSet
 }
@@ -190,7 +213,7 @@ type TargetManager struct {
 	mtx               *sync.RWMutex
 	profilerPools     map[string]*ProfilerPool
 	logger            log.Logger
-	externalLabels    map[string]string
+	externalLabels    model.LabelSet
 	ksymCache         *ksym.KsymCache
 	writeClient       profilestorepb.ProfileStoreServiceClient
 	debugInfoClient   debuginfo.Client
@@ -201,7 +224,7 @@ type TargetManager struct {
 
 func NewTargetManager(
 	logger log.Logger,
-	externalLabels map[string]string,
+	externalLabels model.LabelSet,
 	ksymCache *ksym.KsymCache,
 	writeClient profilestorepb.ProfileStoreServiceClient,
 	debugInfoClient debuginfo.Client,
@@ -247,8 +270,11 @@ func (m *TargetManager) reconcileTargets(ctx context.Context, targetSets map[str
 		level.Debug(m.logger).Log("msg", "reconciling target groups", "name", name)
 		pp, found := m.profilerPools[name]
 
+		level.Debug(m.logger).Log("msg", "reconciling targets", "length of mprofilepools", len(m.profilerPools))
+
 		if !found {
-			pp = NewProfilerPool(ctx, model.LabelSet{}, m.logger, m.ksymCache, m.writeClient, m.debugInfoClient, m.profilingDuration, m.tmp)
+			pp = NewProfilerPool(ctx, m.externalLabels, m.logger, m.ksymCache, m.writeClient, m.debugInfoClient, m.profilingDuration, m.tmp)
+			m.profilerPools[name] = pp
 
 			/*m.targetSets[name] = targetSet
 			profilerSet := []Profiler{}
@@ -291,6 +317,8 @@ func (m *TargetManager) reconcileTargets(ctx context.Context, targetSets map[str
 		}
 
 		pp.Sync(targetSet)
+		level.Debug(pp.logger).Log("msg", "in tm reconcile targets", "length of activeprof", len(pp.activeProfilers))
+		level.Debug(pp.logger).Log("msg", "in tm reconcile targets", "length of targets", len(pp.activeTargets))
 	}
 	return nil
 }
@@ -299,11 +327,16 @@ func (m *TargetManager) ActiveProfilers() map[string][]Profiler {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	level.Debug(m.logger).Log("msg", "in active profiler()", "length of profilerpool", len(m.profilerPools))
+
 	profilerSet := map[string][]Profiler{}
 	for name, profilerPool := range m.profilerPools {
 
 		profilerSet[name] = profilerPool.Profilers()
+		level.Debug(m.logger).Log("msg", "in active profiler()", "length of profilers", len(profilerSet[name]))
+		level.Debug(m.logger).Log("msg", "in active profiler()", "labels in profiler", profilersetToLabels(profilerSet[name]).String())
 	}
 
+	level.Debug(m.logger).Log("msg", "in active profiler()", "length of profilerset", len(profilerSet))
 	return profilerSet
 }
