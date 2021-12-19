@@ -203,7 +203,11 @@ func (p *CgroupProfiler) Run(ctx context.Context) error {
 		return fmt.Errorf("load bpf object: %w", err)
 	}
 
+	path_try := string(p.target[model.LabelName("__cgroup_path__")])
 	cgroup, err := os.Open(string(p.target[model.LabelName("__cgroup_path__")]))
+
+	level.Debug(p.logger).Log("msg", "in profiler Run", "trying to open", path_try)
+
 	if err != nil {
 		return fmt.Errorf("open cgroup: %w", err)
 	}

@@ -80,6 +80,8 @@ func (c *SystemdDiscoverer) Run(ctx context.Context, up chan<- []*Group) error {
 
 		for unit := range c.units {
 
+			level.Debug(c.logger).Log("msg", "i do enter unit range", "unit=", unit)
+
 			labelset, err := c.ReconcileUnit(ctx, unit)
 			if err != nil {
 				return err
@@ -98,8 +100,14 @@ func (c *SystemdDiscoverer) Run(ctx context.Context, up chan<- []*Group) error {
 }
 
 func (c *SystemdDiscoverer) ReconcileUnit(ctx context.Context, unit string) (model.LabelSet, error) {
-	f, err := os.Open(fmt.Sprintf("/sys/fs/cgroup/systemd/system.slice/%s/cgroup.procs", unit))
+	level.Debug(c.logger).Log("msg", "systemdiscoverer reconcile unit")
+
+	f, err := os.Open(fmt.Sprintf("/sys/fs/cgroup/system.slice/%s/cgroup.procs", unit))
+	level.Debug(c.logger).Log("msg", "cgrouppathlabelname", "is", CgroupPathLabelName)
+	//f, err := os.Open(fmt.Sprintf("%s/%s/cgroup.procs", CgroupPathLabelName, unit))
 	if os.IsNotExist(err) {
+		level.Debug(c.logger).Log("msg", "moi doing the not exist return")
+
 		c.mtx.Lock()
 
 		delete(c.unitProfilers, unit)
@@ -109,10 +117,13 @@ func (c *SystemdDiscoverer) ReconcileUnit(ctx context.Context, unit string) (mod
 
 	}
 	if err != nil {
+		level.Debug(c.logger).Log("msg", "moi doing the error out")
+
 		return nil, err
 	}
 	defer f.Close()
 
+	level.Debug(c.logger).Log("msg", "I do reach this point")
 	err = os.MkdirAll(fmt.Sprintf("/sys/fs/cgroup/perf_event/system.slice/%s/", unit), os.ModePerm)
 	if err != nil {
 		return nil, err
