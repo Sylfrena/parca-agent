@@ -118,6 +118,7 @@ func isEqualLabel(a, b *profilestorepb.LabelSet) bool {
 	return ret
 }
 
+//verifies whether incoming p already is present in arr and returns end index for arr
 func findIndex(arr []*profilestorepb.RawProfileSeries, p *profilestorepb.RawProfileSeries) (int, bool) {
 	for i, val := range arr {
 		if isEqualLabel(val.Labels, p.Labels) {

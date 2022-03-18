@@ -15,6 +15,8 @@ package target
 
 import (
 	"context"
+	"hash/fnv"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -56,6 +58,7 @@ type ProfilerPool struct {
 	writeClient       profilestorepb.ProfileStoreServiceClient
 	debugInfoClient   debuginfo.Client
 	profilingDuration time.Duration
+	samplingRatio     float64
 	tmp               string
 }
 
@@ -69,6 +72,7 @@ func NewProfilerPool(
 	debugInfoClient debuginfo.Client,
 	profilingDuration time.Duration,
 	externalLabels model.LabelSet,
+	samplingRatio float64,
 	tmp string,
 ) *ProfilerPool {
 	return &ProfilerPool{
@@ -84,6 +88,7 @@ func NewProfilerPool(
 		writeClient:       writeClient,
 		debugInfoClient:   debugInfoClient,
 		profilingDuration: profilingDuration,
+		samplingRatio:     samplingRatio,
 		tmp:               tmp,
 	}
 }
@@ -143,6 +148,11 @@ func (pp *ProfilerPool) Sync(tg []*Group) {
 				pp.tmp,
 			)
 
+			if !probabilisticSampling(pp.samplingRatio, labelsetToLabels(newTarget.labelSet)) {
+				// This target is not being sampled.
+				continue
+			}
+
 			go func() {
 				err := newProfiler.Run(pp.ctx)
 				level.Debug(pp.logger).Log("msg", "profiler ended with error", "error", err, "labels", newProfiler.Labels().String())
@@ -172,4 +182,24 @@ func labelsetToLabels(labelSet model.LabelSet) labels.Labels {
 	}
 	sort.Sort(ls)
 	return ls
+}
+
+var seps = []byte{'\xff'}
+
+func probabilisticSampling(ratio float64, labels labels.Labels) bool {
+	if ratio == 1.0 {
+		return true
+	}
+
+	b := make([]byte, 0, 1024)
+	for _, v := range labels {
+		b = append(b, v.Name...)
+		b = append(b, seps[0])
+		b = append(b, v.Value...)
+		b = append(b, seps[0])
+	}
+	h := fnv.New32a()
+	h.Write(b)
+	v := h.Sum32()
+	return v <= uint32(float64(math.MaxUint32)*ratio)
 }
