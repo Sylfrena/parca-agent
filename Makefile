@@ -271,3 +271,8 @@ dev/up: deploy/manifests
 .PHONY: dev/down
 dev/down:
 	source ./scripts/local-dev.sh && down
+
+.PHONY: dev/e2e
+dev/e2e:
+	cd deploy; source ./../e2e/local-e2e.sh && run
+	go test -v $(shell go list ./... | grep "e2e")
