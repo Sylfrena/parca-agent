@@ -46,6 +46,7 @@ OUT_DIR ?= dist
 GO_SRC := $(shell find . -type f -name '*.go')
 OUT_BIN := $(OUT_DIR)/parca-agent
 OUT_DOCKER ?= ghcr.io/parca-dev/parca-agent
+OUT_DOCKER_E2E ?= ghcr.io/parca-dev/parca-agent-test
 DOCKER_BUILDER ?= parca-dev/cross-builder
 
 LIBBPF_SRC := 3rdparty/libbpf/src
@@ -251,6 +252,11 @@ sign-container:
 .PHONY: push-container
 push-container:
 	podman manifest push --all $(OUT_DOCKER):$(VERSION) docker://$(OUT_DOCKER):$(VERSION)
+
+.PHONY: push-container-e2e
+push-container-e2e:
+	podman manifest push --all $(OUT_DOCKER):$(VERSION) docker://$(OUT_DOCKER_E2E):$(VERSION)
+
 
 .PHONY: push-signed-quay-container
 push-signed-quay-container:
