@@ -13,6 +13,13 @@ env:
   RUSTDOCFLAGS: --deny warnings
 
 jobs:
+  set-upterm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: setup upterm sessionn
+        uses: lhotari/action-upterm@v1
+
   skip-check:
     name: Skip check
     continue-on-error: true
