@@ -316,8 +316,8 @@ test-e2e:
 .PHONY: actions-e2e
 actions-e2e:
 	cd deploy; source ./../e2e/ci-e2e.sh && run "virtualbox" $(VERSION)
-	$(GO) test -v $(shell $(GO) list ./e2e)
-	./e2e/e2e-dump.sh
+	#$(GO) test -v $(shell $(GO) list ./e2e)
+	#./e2e/e2e-dump.sh
 
 .PHONY: $(DOCKER_BUILDER)
 $(DOCKER_BUILDER): Dockerfile.cross-builder | $(OUT_DIR) check_$(CMD_DOCKER)
