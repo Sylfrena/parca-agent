@@ -2,8 +2,9 @@
 
 mkdir -p ./tmp/e2e-dump
 cd ./tmp/e2e-dump
-kubectl get all -A > ./tmp/e2e-dump/kube-all
-kubectl get all -A -o yaml > ./tmp/e2e-dump/kube-all.yaml
+touch kube-all kube-all.yaml
+kubectl get all -A > kube-all
+kubectl get all -A -o yaml > kube-all.yaml
 
 list=$(kubectl get pods -A --template '{{range .items}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}')
 
