@@ -237,6 +237,9 @@ jobs:
       - name: Run e2e tests
         run: make actions-e2e
 
+      - name: Upload kubectl logs
+        run: ./e2e/e2e-dump.sh
+
       - name: Setup upterm sessionn
         #run: touch continue
         uses: lhotari/action-upterm@v1
@@ -247,5 +250,5 @@ jobs:
         with:
           name: kubectl e2e dump
           path: |
-            tmp/e2e-dump
+            ./tmp/e2e-dump
 
