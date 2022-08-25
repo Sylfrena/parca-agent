@@ -28,6 +28,7 @@ function minikube_up (){
     --container-runtime=docker \
     --insecure-registry="localhost:5000"\
     --driver=$DRIVER \
+    --feature-gates=EphemeralContainers=true \
     --kubernetes-version=v1.22.3 \
     --docker-opt dns=8.8.8.8 \
     --docker-opt default-ulimit=memlock=9223372036854775807:9223372036854775807
