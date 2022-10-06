@@ -308,15 +308,10 @@ dev/up: deploy/manifests
 dev/down:
 	source ./scripts/local-dev.sh && down
 
-.PHONY: test-e2e $(driver)
-test-e2e:
-	cd deploy; source ./../e2e/local-e2e.sh && run $(driver)
-	$(GO) test -v ./e2e
-
 .PHONY: actions-e2e
 actions-e2e:
 	cd deploy; source ./../e2e/ci-e2e.sh && run "virtualbox" $(VERSION)
-	#$(GO) test -v $(shell $(GO) list ./e2e)
+	$(GO) test -v ./e2e --kubeconfig "$(HOME)/.kube/config"
 
 .PHONY: $(DOCKER_BUILDER)
 $(DOCKER_BUILDER): Dockerfile.cross-builder | $(OUT_DIR) check_$(CMD_DOCKER)
