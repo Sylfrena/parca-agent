@@ -37,15 +37,20 @@ import (
 
 var kubeconfig = flag.String("kubeconfig", "~/.kube/config", "kube config path")
 
-//Checks for parca-server and parca-agent pods and returns pod names if true
-//Returns empty string if no pods are found
+// TODO: make CheckPodsExist a test helper
+
+// Checks for parca-server and parca-agent pods and returns pod names if true
+// Returns empty string if no pods are found
 func CheckPodsExist(ctx context.Context, kubeClient kubernetes.Interface) (string, string, error) {
 	labelSelectorParcaServer := labels.FormatLabels(map[string]string{"app.kubernetes.io/name": "parca"})
 	labelSelectorParcaAgent := labels.FormatLabels(map[string]string{"app.kubernetes.io/name": "parca-agent"})
 
 	parcaServerPod, err := kubeClient.CoreV1().Pods("parca").List(ctx, metav1.ListOptions{LabelSelector: labelSelectorParcaServer})
-	parcaAgentPod, err := kubeClient.CoreV1().Pods("parca").List(ctx, metav1.ListOptions{LabelSelector: labelSelectorParcaAgent})
+	if err != nil {
+		return "", "", fmt.Errorf("Unable to fetch pods in parca namespace: %s", err)
+	}
 
+	parcaAgentPod, err := kubeClient.CoreV1().Pods("parca").List(ctx, metav1.ListOptions{LabelSelector: labelSelectorParcaAgent})
 	if err != nil {
 		return "", "", fmt.Errorf("Unable to fetch pods in parca namespace: %s", err)
 	}
@@ -63,6 +68,7 @@ func CheckPodsExist(ctx context.Context, kubeClient kubernetes.Interface) (strin
 	return parcaServerPod.Items[0].Name, parcaAgentPod.Items[0].Name, nil
 }
 
+// TODO: remove t.logs
 func TestConfig(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -82,21 +88,21 @@ func TestConfig(t *testing.T) {
 
 	ns := "parca"
 
-	closerServer, err := StartPortForward(ctx, cfg, "https", parcaServer, ns, "7070")
+	serverCloser, err := StartPortForward(ctx, cfg, "https", parcaServer, ns, "7070")
 	if err != nil {
 		pollErr := fmt.Errorf("failed to start port forwarding Parca Server: %v", err)
 		t.Log(pollErr)
 		require.NoError(t, err)
 	}
-	defer closerServer()
+	defer serverCloser()
 
-	closerAgent, err := StartPortForward(ctx, cfg, "https", parcaAgent, ns, "7071")
+	agentCloser, err := StartPortForward(ctx, cfg, "https", parcaAgent, ns, "7071")
 	if err != nil {
 		pollErr := fmt.Errorf("failed to start port forwarding Parca Agent: %v", err)
 		t.Log(pollErr)
 		require.NoError(t, err)
 	}
-	defer closerAgent()
+	defer agentCloser()
 
 	println("Starting tests")
 	conn, err := grpc.Dial("127.0.0.1:7070", grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -105,7 +111,7 @@ func TestConfig(t *testing.T) {
 
 	println("Creating query service client")
 	c := pb.NewQueryServiceClient(conn)
-	//ctx := context.Background()
+	// ctx := context.Background()
 
 	println("Performing Query Range Request")
 	queryRequestAgent := &pb.QueryRangeRequest{
@@ -128,7 +134,7 @@ func TestConfig(t *testing.T) {
 			t.Fatal(err1)
 		}
 
-		//require.NoError(t, err1)
+		// require.NoError(t, err1)
 		require.NotEmpty(t, resp1.Series)
 	}
 
@@ -174,8 +180,7 @@ func gTestIntegrationGRPC(t *testing.T) {
 			t.Fatal(err1)
 		}
 
-		//require.NoError(t, err1)
+		// require.NoError(t, err1)
 		require.NotEmpty(t, resp1.Series)
 	}
-
 }
