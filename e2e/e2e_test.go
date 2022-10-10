@@ -104,6 +104,8 @@ func TestConfig(t *testing.T) {
 	}
 	defer agentCloser()
 
+	time.Sleep(10 * time.Minute)
+
 	println("Starting tests")
 	conn, err := grpc.Dial("127.0.0.1:7070", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
