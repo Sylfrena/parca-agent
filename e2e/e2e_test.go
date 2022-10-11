@@ -70,7 +70,7 @@ func CheckPodsExist(ctx context.Context, kubeClient kubernetes.Interface) (strin
 
 // TODO: remove t.logs
 func TestConfig(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cfg, err := GetKubeConfig(*kubeconfig)
@@ -104,8 +104,6 @@ func TestConfig(t *testing.T) {
 	}
 	defer agentCloser()
 
-	time.Sleep(10 * time.Minute)
-
 	println("Starting tests")
 	conn, err := grpc.Dial("127.0.0.1:7070", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -124,6 +122,8 @@ func TestConfig(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
+		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
 		resp1, err1 := c.QueryRange(ctx, queryRequestAgent)
 
 		if err1 != nil {
@@ -133,7 +133,17 @@ func TestConfig(t *testing.T) {
 				time.Sleep(time.Minute)
 				continue
 			}
-			t.Fatal(err1)
+			if ok && status.Code() == codes.NotFound {
+				t.Log("query range resource not found, retrying in a minute\n", err1)
+				time.Sleep(time.Minute)
+				continue
+			}
+			if ok && status.Code() == codes.DeadlineExceeded {
+				t.Log("deadline exceeded\n", err1)
+				time.Sleep(time.Minute)
+				continue
+			}
+			t.Error(err1)
 		}
 
 		// require.NoError(t, err1)
