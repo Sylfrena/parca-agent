@@ -40,7 +40,7 @@ var kubeconfig = flag.String("kubeconfig", "~/.kube/config", "kube config path")
 // TODO(sylfrena): make CheckPodsExist() a test helper
 
 // Checks for parca-server and parca-agent pods and returns pod names if true
-// Returns empty string if no pods are found
+// Returns empty string if no pods are found.
 func CheckPodsExist(ctx context.Context, kubeClient kubernetes.Interface) (string, string, error) {
 	labelSelectorParcaServer := labels.FormatLabels(map[string]string{"app.kubernetes.io/name": "parca"})
 	labelSelectorParcaAgent := labels.FormatLabels(map[string]string{"app.kubernetes.io/name": "parca-agent"})
@@ -68,9 +68,9 @@ func CheckPodsExist(ctx context.Context, kubeClient kubernetes.Interface) (strin
 	return parcaServerPod.Items[0].Name, parcaAgentPod.Items[0].Name, nil
 }
 
-// TODO(sylfrena): cleanup logs once e2e tests are stabilised
+// TODO(sylfrena): cleanup logs once e2e tests are stabilized
 // TODO(sylfrena): reduce context timeouts
-// TODO(sylfrena): use exponential backoff instead
+// TODO(sylfrena): use exponential backoff instead.
 func TestConfig(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
@@ -124,7 +124,6 @@ func TestConfig(t *testing.T) {
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Minute)
 		defer cancel()
 		resp, err := c.QueryRange(ctx, queryRequestAgent)
-
 		if err != nil {
 			status, ok := status.FromError(err)
 			if ok && status.Code() == codes.Unavailable {

@@ -185,7 +185,7 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@7cc35d7fdbe70d4278a0c96779081e6fac665f88 # tag=v2.8.0
-      
+
       - name: Login to registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login -u parca-dev --password-stdin ghcr.io
@@ -253,4 +253,3 @@ jobs:
           name: kubectl e2e dump
           path: |
             ./tmp/e2e-dump
-
