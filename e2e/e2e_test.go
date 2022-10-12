@@ -37,7 +37,7 @@ import (
 
 var kubeconfig = flag.String("kubeconfig", "~/.kube/config", "kube config path")
 
-// TODO: make CheckPodsExist a test helper
+// TODO(sylfrena): make CheckPodsExist() a test helper
 
 // Checks for parca-server and parca-agent pods and returns pod names if true
 // Returns empty string if no pods are found
@@ -68,9 +68,11 @@ func CheckPodsExist(ctx context.Context, kubeClient kubernetes.Interface) (strin
 	return parcaServerPod.Items[0].Name, parcaAgentPod.Items[0].Name, nil
 }
 
-// TODO: remove t.logs
+// TODO(sylfrena): cleanup logs once e2e tests are stabilised
+// TODO(sylfrena): reduce context timeouts
+// TODO(sylfrena): use exponential backoff instead
 func TestConfig(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
 	cfg, err := GetKubeConfig(*kubeconfig)
@@ -81,7 +83,7 @@ func TestConfig(t *testing.T) {
 
 	parcaServer, parcaAgent, err := CheckPodsExist(ctx, kubeClient)
 	if err != nil {
-		t.Log(fmt.Errorf("pod discovery error: %s", err))
+		t.Logf("pod discovery error: %s", err)
 		require.NoError(t, err)
 	}
 	fmt.Println("Pods discovered: ", parcaServer, parcaAgent)
@@ -90,16 +92,14 @@ func TestConfig(t *testing.T) {
 
 	serverCloser, err := StartPortForward(ctx, cfg, "https", parcaServer, ns, "7070")
 	if err != nil {
-		pollErr := fmt.Errorf("failed to start port forwarding Parca Server: %v", err)
-		t.Log(pollErr)
+		t.Logf("failed to start port forwarding Parca Server: %v", err)
 		require.NoError(t, err)
 	}
 	defer serverCloser()
 
 	agentCloser, err := StartPortForward(ctx, cfg, "https", parcaAgent, ns, "7071")
 	if err != nil {
-		pollErr := fmt.Errorf("failed to start port forwarding Parca Agent: %v", err)
-		t.Log(pollErr)
+		t.Logf("failed to start port forwarding Parca Agent: %v", err)
 		require.NoError(t, err)
 	}
 	defer agentCloser()
@@ -111,7 +111,6 @@ func TestConfig(t *testing.T) {
 
 	println("Creating query service client")
 	c := pb.NewQueryServiceClient(conn)
-	// ctx := context.Background()
 
 	println("Performing Query Range Request")
 	queryRequestAgent := &pb.QueryRangeRequest{
@@ -124,75 +123,28 @@ func TestConfig(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Minute)
 		defer cancel()
-		resp1, err1 := c.QueryRange(ctx, queryRequestAgent)
+		resp, err := c.QueryRange(ctx, queryRequestAgent)
 
-		if err1 != nil {
-			status, ok := status.FromError(err1)
+		if err != nil {
+			status, ok := status.FromError(err)
 			if ok && status.Code() == codes.Unavailable {
 				t.Log("query range api unavailable, retrying in a second")
 				time.Sleep(time.Minute)
 				continue
 			}
 			if ok && status.Code() == codes.NotFound {
-				t.Log("query range resource not found, retrying in a minute\n", err1)
+				t.Log("query range resource not found, retrying in a minute\n", err)
 				time.Sleep(time.Minute)
 				continue
 			}
 			if ok && status.Code() == codes.DeadlineExceeded {
-				t.Log("deadline exceeded\n", err1)
+				t.Log("deadline exceeded\n", err)
 				time.Sleep(time.Minute)
 				continue
 			}
-			t.Error(err1)
+			t.Error(err)
 		}
 
-		// require.NoError(t, err1)
-		require.NotEmpty(t, resp1.Series)
-	}
-
-	/*	conn, err := grpc.Dial("127.0.0.1:7070", grpc.WithTransportCredentials(insecure.NewCredentials()))
-		require.NoError(t, err)
-		defer conn.Close()
-
-		_, err = http.NewRequestWithContext(ctx, "GET", "https://localhost:9090", nil)
-		if err != nil {
-			require.NoError(t, err)
-		}
-	*/
-}
-
-func gTestIntegrationGRPC(t *testing.T) {
-	println("starting tests")
-	conn, err := grpc.Dial("127.0.0.1:7070", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer conn.Close()
-
-	println("Creating query service client")
-	c := pb.NewQueryServiceClient(conn)
-	ctx := context.Background()
-
-	println("Performing Query Range Request")
-	queryRequestAgent := &pb.QueryRangeRequest{
-		Query: `parca_agent_cpu:samples:count:cpu:nanoseconds:delta`,
-		Start: timestamppb.New(timestamp.Time(0)),
-		End:   timestamppb.New(timestamp.Time(math.MaxInt64)),
-		Limit: 10,
-	}
-
-	for i := 0; i < 10; i++ {
-		resp1, err1 := c.QueryRange(ctx, queryRequestAgent)
-
-		if err1 != nil {
-			status, ok := status.FromError(err1)
-			if ok && status.Code() == codes.Unavailable {
-				t.Log("query range api unavailable, retrying in a second")
-				time.Sleep(time.Minute)
-				continue
-			}
-			t.Fatal(err1)
-		}
-
-		// require.NoError(t, err1)
-		require.NotEmpty(t, resp1.Series)
+		require.NotEmpty(t, resp.Series)
 	}
 }

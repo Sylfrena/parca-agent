@@ -240,8 +240,11 @@ jobs:
       - name: Upload kubectl logs
         run: ./e2e/e2e-dump.sh
 
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
+      # Uncomment the next two lines to use upterm to debug CI
+      # Run `touch continue` from upterm session to close upterm
+      # and finish this step
+      # - name: Setup upterm session
+      #   uses: lhotari/action-upterm@v1
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v3
