@@ -687,6 +687,13 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
 
     if (unwind_table_result == FIND_UNWIND_JITTED) {
       LOG("JIT section, stopping");
+
+      LOG("JIT section, stopping");
+      LOG("\tcurrent pc: %llx", unwind_state->ip);
+      LOG("\tcurrent sp: %llx", unwind_state->sp);
+      LOG("\tcurrent bp: %llx", unwind_state->bp);
+      LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
+      LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
       return 1;
     } else if (unwind_table_result == FIND_UNWIND_SPECIAL) {
       LOG("special section, stopping");
