@@ -576,8 +576,9 @@ static __always_inline bool has_fp(u64 current_fp) {
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)current_fp);
+    bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx", i, err, next_fp);
     if (err < 0) {
-      // LOG("[debug] fp read failed with %d", err);
+      LOG("[debug] fp read failed with %d", err);
       return false;
     }
 
@@ -599,6 +600,86 @@ static __always_inline bool has_fp(u64 current_fp) {
   }
 
   LOG("[debug] fp not enough frames");
+  return false;
+}
+
+//Try to walk JITed sections
+static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
+  u64 next_fp;
+  u64 len = unwind_state->stack.len;
+
+  LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip, unwind_state->sp,unwind_state->bp);
+
+  for (int i = 0; i < MAX_STACK_DEPTH; i++) {
+    int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
+    LOG("[debug] i=%d, err = %d && rbp = %llx",i, err, next_fp);
+    if (err < 0){
+      //if err, then just add the cuurent frame?
+      if (len >= 0 && len < MAX_STACK_DEPTH) {
+        unwind_state->stack.addresses[len] = unwind_state->ip;
+      }
+      return false;
+    }
+
+    if (next_fp == 0){ //also check if going outside jited section
+      LOG("[info] found bottom frame while walking JITed section");
+      //add bottom frame to stack
+      if (len >= 0 && len < MAX_STACK_DEPTH) {
+        unwind_state->stack.addresses[len] = unwind_state->ip;
+      }
+      return true;
+    }
+    unwind_state->bp = next_fp;
+
+    // Add address to stack.
+    // Appease the verifier.
+    if (len >= 0 && len < MAX_STACK_DEPTH) {
+      unwind_state->stack.addresses[len] = unwind_state->ip;
+    }
+  }
+
+  return false;
+}
+
+static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
+ process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &pid);
+  // Appease the verifier.
+  if (proc_info == NULL) {
+    bpf_printk("[error] should never happen");
+    return false;
+  }
+  LOG("[debug] Confirming jitted section");
+
+  //bool found = false;
+    //u64 load_address = 0;
+
+  u64 executable_id = 0;
+  u64 type = 0;
+  u64 begin=0;
+  u64 end=0;
+
+  // Find the mapping.
+  for (int i = 0; i < MAX_MAPPINGS_PER_PROCESS; i++) {
+    // Appease the verifier.
+    if (i < 0 || i > MAX_MAPPINGS_PER_PROCESS) {
+      bpf_printk("[error] should never happen, verifier");
+      return false;
+     }
+     LOG("[debug] reachy here");
+    if (proc_info->mappings[i].begin <= ip && ip <= proc_info->mappings[i].end) {
+      //  found = true;
+      //  load_address = proc_info->mappings[i].load_address;
+      executable_id = proc_info->mappings[i].executable_id;
+      begin = proc_info->mappings[i].begin;
+      end = proc_info->mappings[i].end;
+      type = proc_info->mappings[i].type;
+      LOG("[debug] jit section: %llx, %llx, %llx, %llx, %llx", begin, end, executable_id, type);
+      break;
+    }
+  }
+  if (type == 1) {
+      return true;
+  }
   return false;
 }
 
@@ -686,7 +767,19 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     enum find_unwind_table_return unwind_table_result = find_unwind_table(&chunk_info, user_pid, unwind_state->ip, &offset);
 
     if (unwind_table_result == FIND_UNWIND_JITTED) {
-      LOG("JIT section, stopping");
+      LOG("JIT section, trying to walk");
+      LOG("\tcurrent pc: %llx", unwind_state->ip);
+      LOG("\tcurrent sp: %llx", unwind_state->sp);
+      LOG("\tcurrent bp: %llx", unwind_state->bp);
+      LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
+      LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
+      LOG("reaching walk_jitted");
+      reached_bottom_of_stack = walk_jitted(unwind_state);
+      LOG("walked the jitted section");
+      if (reached_bottom_of_stack){
+        break;
+      }
+      LOG("returning from jitted section");
       return 1;
     } else if (unwind_table_result == FIND_UNWIND_SPECIAL) {
       LOG("special section, stopping");
@@ -983,7 +1076,10 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
     return 0;
   }
 
+ // When we are doing fp based stack walking, sometimes stacks missed out because kernel unwinder
+ // (bpf_map_lookup_element) returns quietly and skips frames if bottom frame is not found so we check from latest bp
   if (has_fp(unwind_state->bp)) {
+    LOG("[info] checking if FP");
     add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL);
     return 0;
   }
@@ -1002,6 +1098,21 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
 
       LOG("[warn] IP 0x%llx not covered, could be a new/JIT mapping.", unwind_state->ip);
       if (unwind_table_result == FIND_UNWIND_MAPPING_NOT_FOUND) {
+        if(confirm_jitted_section((u64)user_pid, unwind_state->ip)) {
+          LOG("JITed section?, trying to walk");
+          LOG("\tcurrent pc: %llx", unwind_state->ip);
+          LOG("\tcurrent sp: %llx", unwind_state->sp);
+          LOG("\tcurrent bp: %llx", unwind_state->bp);
+          LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
+          LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
+          LOG("reaching walk_jitted");
+          bool reached_bottom_of_stack = walk_jitted(unwind_state);
+          LOG("walked the jitted section");
+          if (reached_bottom_of_stack){
+            }
+          LOG("returning from jitted section");
+        //return 1;
+        }
         request_refresh_process_info(ctx, user_pid);
         bump_unwind_error_pc_not_covered();
       } else if (unwind_table_result == FIND_UNWIND_JITTED) {
@@ -1023,6 +1134,9 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
   request_unwind_information(ctx, user_pid);
   return 0;
 }
+
+
+
 
 #define KBUILD_MODNAME "parca-agent"
 volatile const char bpf_metadata_name[] SEC(".rodata") = "parca-agent (https://github.com/parca-dev/parca-agent)";
