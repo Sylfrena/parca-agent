@@ -608,18 +608,15 @@ static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
   u64 next_fp;
   u64 len = unwind_state->stack.len;
 
-  LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip, unwind_state->sp,unwind_state->bp);
+  // LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip, unwind_state->sp,unwind_state->bp);
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
     LOG("[debug] i=%d, err = %d && rbp = %llx",i, err, next_fp);
-    if (err < 0){
-      //if err, then just add the cuurent frame?
-      if (len >= 0 && len < MAX_STACK_DEPTH) {
-        unwind_state->stack.addresses[len] = unwind_state->ip;
-      }
+    if (err < 0){    //if err, then just add the cuurent frame?
       return false;
     }
+
 
     if (next_fp == 0){ //also check if going outside jited section
       LOG("[info] found bottom frame while walking JITed section");
@@ -627,15 +624,24 @@ static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
       if (len >= 0 && len < MAX_STACK_DEPTH) {
         unwind_state->stack.addresses[len] = unwind_state->ip;
       }
+      unwind_state->bp = next_fp;
       return true;
     }
+
+
     unwind_state->bp = next_fp;
+len = unwind_state->stack.len;
+
+if (len >= 0 && len < MAX_STACK_DEPTH) {
+        unwind_state->stack.addresses[len] = unwind_state->ip;
+      }
 
     // Add address to stack.
     // Appease the verifier.
-    if (len >= 0 && len < MAX_STACK_DEPTH) {
-      unwind_state->stack.addresses[len] = unwind_state->ip;
-    }
+    //if (len >= 0 && len < MAX_STACK_DEPTH) {
+    //  unwind_state->stack.addresses[len] = unwind_state->ip;
+    //}
+
   }
 
   return false;
@@ -789,8 +795,8 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       return 1;
     } else if (chunk_info == NULL) {
       // improve
-      reached_bottom_of_stack = true;
-      break;
+        reached_bottom_of_stack = true;
+        break;
     }
 
     stack_unwind_table_t *unwind_table = bpf_map_lookup_elem(&unwind_tables, &chunk_info->shard_index);
