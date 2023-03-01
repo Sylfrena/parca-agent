@@ -573,10 +573,13 @@ static __always_inline bool retrieve_task_registers(u64 *ip, u64 *sp, u64 *bp) {
 // right now using both.
 static __always_inline bool has_fp(u64 current_fp) {
   u64 next_fp;
+  u64 ra;
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)current_fp);
-    bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx", i, err, next_fp);
+    bpf_probe_read_user(&ra, 8, (void *)current_fp + 8);
+
+    bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx && ra = %llx", i, err, next_fp, ra);
     if (err < 0) {
       LOG("[debug] fp read failed with %d", err);
       return false;
@@ -593,7 +596,7 @@ static __always_inline bool has_fp(u64 current_fp) {
     // For both cases above, we prefer to unwind using the
     // DWARF-derived unwind information.
     if (next_fp == 0) {
-      // LOG("[debug] fp success");
+      LOG("[debug] fp success");
       return i > 0;
     }
     current_fp = next_fp;
@@ -603,46 +606,61 @@ static __always_inline bool has_fp(u64 current_fp) {
   return false;
 }
 
-//Try to walk JITed sections
+// Try to walk JITed sections
 static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
   u64 next_fp;
+  u64 ra = 0;
   u64 len = unwind_state->stack.len;
 
-  LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip, unwind_state->sp,unwind_state->bp);
+  // LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip,
+  // unwind_state->sp,unwind_state->bp);
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
-    LOG("[debug] i=%d, err = %d && rbp = %llx",i, err, next_fp);
-    if (err < 0){
-      //if err, then just add the cuurent frame?
-      if (len >= 0 && len < MAX_STACK_DEPTH) {
-        unwind_state->stack.addresses[len] = unwind_state->ip;
-      }
+    if (len >= 0 && len < MAX_STACK_DEPTH) {
+        int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+        if (err >= 0) {
+          unwind_state->stack.addresses[len] = ra;
+        }
+    }
+    LOG("[debug] i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+    if (err < 0) { // if err, then just add the current frame?
       return false;
     }
 
-    if (next_fp == 0){ //also check if going outside jited section
+    if (next_fp == 0) { // also check if going outside jited section
       LOG("[info] found bottom frame while walking JITed section");
-      //add bottom frame to stack
-      if (len >= 0 && len < MAX_STACK_DEPTH) {
-        unwind_state->stack.addresses[len] = unwind_state->ip;
-      }
+      //// add bottom frame to stack
+      //if (len >= 0 && len < MAX_STACK_DEPTH) {
+      //  int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+      //  if (err >= 0) {
+      //    unwind_state->stack.addresses[len] = ra;
+      //  }
+      //}
+      unwind_state->bp = next_fp;
+
       return true;
     }
+
     unwind_state->bp = next_fp;
+    len = unwind_state->stack.len;
+
+    if (len >= 0 && len < MAX_STACK_DEPTH) {
+      unwind_state->stack.addresses[len] = ra;
+    }
 
     // Add address to stack.
     // Appease the verifier.
-    if (len >= 0 && len < MAX_STACK_DEPTH) {
-      unwind_state->stack.addresses[len] = unwind_state->ip;
-    }
+    // if (len >= 0 && len < MAX_STACK_DEPTH) {
+    //  unwind_state->stack.addresses[len] = unwind_state->ip;
+    //}
   }
 
   return false;
 }
 
 static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
- process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &pid);
+  process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &pid);
   // Appease the verifier.
   if (proc_info == NULL) {
     bpf_printk("[error] should never happen");
@@ -650,13 +668,13 @@ static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
   }
   LOG("[debug] Confirming jitted section");
 
-  //bool found = false;
-    //u64 load_address = 0;
+  // bool found = false;
+  // u64 load_address = 0;
 
   u64 executable_id = 0;
   u64 type = 0;
-  u64 begin=0;
-  u64 end=0;
+  u64 begin = 0;
+  u64 end = 0;
 
   // Find the mapping.
   for (int i = 0; i < MAX_MAPPINGS_PER_PROCESS; i++) {
@@ -664,8 +682,8 @@ static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
     if (i < 0 || i > MAX_MAPPINGS_PER_PROCESS) {
       bpf_printk("[error] should never happen, verifier");
       return false;
-     }
-     LOG("[debug] reachy here");
+    }
+    LOG("[debug] reachy here");
     if (proc_info->mappings[i].begin <= ip && ip <= proc_info->mappings[i].end) {
       //  found = true;
       //  load_address = proc_info->mappings[i].load_address;
@@ -678,7 +696,7 @@ static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
     }
   }
   if (type == 1) {
-      return true;
+    return true;
   }
   return false;
 }
@@ -776,7 +794,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       LOG("reaching walk_jitted");
       reached_bottom_of_stack = walk_jitted(unwind_state);
       LOG("walked the jitted section");
-      if (reached_bottom_of_stack){
+      if (reached_bottom_of_stack) {
         break;
       }
       LOG("returning from jitted section");
@@ -1076,8 +1094,8 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
     return 0;
   }
 
- // When we are doing fp based stack walking, sometimes stacks missed out because kernel unwinder
- // (bpf_map_lookup_element) returns quietly and skips frames if bottom frame is not found so we check from latest bp
+  // When we are doing fp based stack walking, sometimes stacks missed out because kernel unwinder
+  // (bpf_map_lookup_element) returns quietly and skips frames if bottom frame is not found so we check from latest bp
   if (has_fp(unwind_state->bp)) {
     LOG("[info] checking if FP");
     add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL);
@@ -1134,9 +1152,6 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
   request_unwind_information(ctx, user_pid);
   return 0;
 }
-
-
-
 
 #define KBUILD_MODNAME "parca-agent"
 volatile const char bpf_metadata_name[] SEC(".rodata") = "parca-agent (https://github.com/parca-dev/parca-agent)";
