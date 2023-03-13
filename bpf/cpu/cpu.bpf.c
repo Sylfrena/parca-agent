@@ -573,10 +573,13 @@ static __always_inline bool retrieve_task_registers(u64 *ip, u64 *sp, u64 *bp) {
 // right now using both.
 static __always_inline bool has_fp(u64 current_fp) {
   u64 next_fp;
+  u64 ra;
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)current_fp);
-    bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx", i, err, next_fp);
+    bpf_probe_read_user(&ra, 8, (void *)current_fp + 8);
+
+    bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx && ra = %llx", i, err, next_fp, ra);
     if (err < 0) {
       LOG("[debug] fp read failed with %d", err);
       return false;
@@ -593,7 +596,7 @@ static __always_inline bool has_fp(u64 current_fp) {
     // For both cases above, we prefer to unwind using the
     // DWARF-derived unwind information.
     if (next_fp == 0) {
-      // LOG("[debug] fp success");
+      LOG("[debug] fp success");
       return i > 0;
     }
     current_fp = next_fp;
@@ -614,20 +617,26 @@ static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
-    LOG("[debug] i=%d, err = %d && rbp = %llx", i, err, next_fp);
-    if (err < 0) { // if err, then just add the cuurent frame?
+    if (len >= 0 && len < MAX_STACK_DEPTH) {
+        int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+        if (err >= 0) {
+          unwind_state->stack.addresses[len] = ra;
+        }
+    }
+    LOG("[debug] i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+    if (err < 0) { // if err, then just add the current frame?
       return false;
     }
 
     if (next_fp == 0) { // also check if going outside jited section
       LOG("[info] found bottom frame while walking JITed section");
-      // add bottom frame to stack
-      if (len >= 0 && len < MAX_STACK_DEPTH) {
-        int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
-        if (err >= 0) {
-          unwind_state->stack.addresses[len] = ra;
-        }
-      }
+      //// add bottom frame to stack
+      //if (len >= 0 && len < MAX_STACK_DEPTH) {
+      //  int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+      //  if (err >= 0) {
+      //    unwind_state->stack.addresses[len] = ra;
+      //  }
+      //}
       unwind_state->bp = next_fp;
 
       return true;
