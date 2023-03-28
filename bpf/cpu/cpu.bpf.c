@@ -581,7 +581,13 @@ static __always_inline bool has_fp(u64 current_fp) {
 
     bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx && ra = %llx", i, err, next_fp, ra);
     if (err < 0) {
+      // when err < 0 and rbp == 0, maybe we have stumbled on a section that can be unwound with DWARF instead
+      // in this case, should we just walk till here and then switch over to dwarf?
+      // currently we seem to be discarding the stacks
+
       LOG("[debug] fp read failed with %d", err);
+      // notice for a lot of these cases, the second last rbp and ra seems different, should we maybe discard this and peek instead?
+      // how to cover for a rbp=5 but err =0 case, i.e. the case before rbp=0 and err<0
       return false;
     }
 
@@ -595,7 +601,7 @@ static __always_inline bool has_fp(u64 current_fp) {
     //
     // For both cases above, we prefer to unwind using the
     // DWARF-derived unwind information.
-    if (next_fp == 0) {
+    if (next_fp == 1) {
       LOG("[debug] fp success");
       return i > 0;
     }
@@ -616,14 +622,22 @@ static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
   // unwind_state->sp,unwind_state->bp);
 
   for (int i = 0; i < MAX_STACK_DEPTH; i++) {
+    // reading frame pointer
     int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
+     if (err < 0) { // if err, then just add the current frame?
+      return false;
+    }
+
+    LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
     if (len >= 0 && len < MAX_STACK_DEPTH) {
+        // reading return address
         int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+        // add ra frame only if no err
         if (err >= 0) {
-          unwind_state->stack.addresses[len] = ra;
+            unwind_state->stack.addresses[len] = ra;
         }
     }
-    LOG("[debug] i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+    LOG("[debug] wj2 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
     if (err < 0) { // if err, then just add the current frame?
       return false;
     }
@@ -1098,6 +1112,7 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
   // (bpf_map_lookup_element) returns quietly and skips frames if bottom frame is not found so we check from latest bp
   if (has_fp(unwind_state->bp)) {
     LOG("[info] checking if FP");
+    LOG("[debug] fp success");
     add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL);
     return 0;
   }
@@ -1115,7 +1130,10 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
       }
 
       LOG("[warn] IP 0x%llx not covered, could be a new/JIT mapping.", unwind_state->ip);
+      LOG("[debug] this me");
+
       if (unwind_table_result == FIND_UNWIND_MAPPING_NOT_FOUND) {
+          LOG("[debug] findunwind");
         if(confirm_jitted_section((u64)user_pid, unwind_state->ip)) {
           LOG("JITed section?, trying to walk");
           LOG("\tcurrent pc: %llx", unwind_state->ip);
