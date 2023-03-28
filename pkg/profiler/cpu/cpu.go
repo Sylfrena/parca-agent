@@ -64,8 +64,9 @@ const (
 )
 
 type Config struct {
-	FilterProcesses bool
-	VerboseLogging  bool
+	FilterProcesses   bool
+	VerboseLogging    bool
+	MixedStackWalking bool
 }
 
 type combinedStack [doubleStackDepth]uint64
@@ -105,6 +106,9 @@ type CPU struct {
 	memlockRlimit     uint64
 	bpfLoggingVerbose bool
 
+	mixedUnwinding    bool
+	verboseBpfLogging bool
+
 	// Notify that the BPF program was loaded.
 	bpfProgramLoaded chan bool
 }
@@ -122,6 +126,7 @@ func NewCPUProfiler(
 	memlockRlimit uint64,
 	debugProcessNames []string,
 	disableDWARFUnwinding bool,
+	mixedUnwinding bool,
 	verboseBpfLogging bool,
 	bpfProgramLoaded chan bool,
 ) *CPU {
@@ -150,6 +155,7 @@ func NewCPUProfiler(
 		debugProcessNames: debugProcessNames,
 
 		dwarfUnwindingDisable: disableDWARFUnwinding,
+		mixedUnwinding:        mixedUnwinding,
 		bpfLoggingVerbose:     verboseBpfLogging,
 
 		bpfProgramLoaded: bpfProgramLoaded,
@@ -184,7 +190,7 @@ func (p *CPU) debugProcesses() bool {
 
 // loadBpfProgram loads the BPF program and maps adjusting the unwind shards to
 // the highest possible value.
-func loadBpfProgram(logger log.Logger, reg prometheus.Registerer, debugEnabled, verboseBpfLogging bool, memlockRlimit uint64) (*bpf.Module, *bpfMaps, error) {
+func loadBpfProgram(logger log.Logger, reg prometheus.Registerer, mixedUnwinding, debugEnabled, verboseBpfLogging bool, memlockRlimit uint64) (*bpf.Module, *bpfMaps, error) {
 	var (
 		m       *bpf.Module
 		bpfMaps *bpfMaps
@@ -228,7 +234,7 @@ func loadBpfProgram(logger log.Logger, reg prometheus.Registerer, debugEnabled, 
 			return nil, nil, fmt.Errorf("failed to adjust map sizes: %w", err)
 		}
 
-		if err := m.InitGlobalVariable(configKey, Config{FilterProcesses: debugEnabled, VerboseLogging: verboseBpfLogging}); err != nil {
+		if err := m.InitGlobalVariable(configKey, Config{FilterProcesses: debugEnabled, VerboseLogging: verboseBpfLogging, MixedStackWalking: mixedUnwinding}); err != nil {
 			return nil, nil, fmt.Errorf("init global variable: %w", err)
 		}
 
@@ -402,7 +408,7 @@ func (p *CPU) Run(ctx context.Context) error {
 
 	debugEnabled := len(matchers) > 0
 
-	m, bpfMaps, err := loadBpfProgram(p.logger, p.reg, debugEnabled, p.bpfLoggingVerbose, p.memlockRlimit)
+	m, bpfMaps, err := loadBpfProgram(p.logger, p.reg, p.mixedUnwinding, debugEnabled, p.bpfLoggingVerbose, p.memlockRlimit)
 	if err != nil {
 		return fmt.Errorf("load bpf program: %w", err)
 	}
