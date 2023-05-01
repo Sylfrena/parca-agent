@@ -79,11 +79,13 @@ _Static_assert(1 << MAX_BINARY_SEARCH_DEPTH >= MAX_UNWIND_TABLE_SIZE, "unwind ta
 enum stack_walking_method {
   STACK_WALKING_METHOD_FP = 0,
   STACK_WALKING_METHOD_DWARF = 1,
+  //STACK_WALKING_METHOD_MIXED = 2,
 };
 
 struct unwinder_config_t {
   bool filter_processes;
   bool verbose_logging;
+  bool mixed_stack_walking;
 };
 
 struct unwinder_stats_t {
@@ -806,11 +808,14 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
       LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
       LOG("reaching walk_jitted");
-      reached_bottom_of_stack = walk_jitted(unwind_state);
-      LOG("walked the jitted section");
-      if (reached_bottom_of_stack) {
-        break;
+      if (unwinder_config.mixed_stack_walking) {
+        reached_bottom_of_stack = walk_jitted(unwind_state);
+        LOG("walked the jitted section");
+        if (reached_bottom_of_stack) {
+          break;
+        }
       }
+
       LOG("returning from jitted section");
       return 1;
     } else if (unwind_table_result == FIND_UNWIND_SPECIAL) {
@@ -1113,9 +1118,10 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
   if (has_fp(unwind_state->bp)) {
     LOG("[info] checking if FP");
     LOG("[debug] fp success");
-    add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL);
+    add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL); //why not just adding to unwind addresses?
     return 0;
   }
+  // will we not end up running this even in dwarf mode? oh no, because stack walking would be zero. would it?
 
   if (has_unwind_information(user_pid)) {
     bump_samples();
@@ -1142,18 +1148,23 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
           LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
           LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
           LOG("reaching walk_jitted");
-          bool reached_bottom_of_stack = walk_jitted(unwind_state);
-          LOG("walked the jitted section");
-          if (reached_bottom_of_stack){
+          if (unwinder_config.mixed_stack_walking) {
+            bool reached_bottom_of_stack = walk_jitted(unwind_state);
+            LOG("walked the jitted section");
+            if (reached_bottom_of_stack){
             }
+          }
           LOG("returning from jitted section");
-        //return 1;
+          //return 1; 1 is error case, we want to return succes case here; how to go from here to 1169?
         }
         request_refresh_process_info(ctx, user_pid);
         bump_unwind_error_pc_not_covered();
-      } else if (unwind_table_result == FIND_UNWIND_JITTED) {
+      } else if (unwind_table_result == FIND_UNWIND_JITTED) { //what use case is this?
+        LOG("[debug] notmykindaJITed");
         bump_unwind_error_jit();
-      } else if (proc_info->is_jit_compiler) {
+      } else if (proc_info->is_jit_compiler) {  //what is going on here? document all this.
+      //TODO: separate this from other kind jit error
+        LOG("[debug] notmykindaJITed");
         request_refresh_process_info(ctx, user_pid);
         // We assume this failed because of a new JIT segment.
         bump_unwind_error_jit();
@@ -1163,7 +1174,7 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
     }
 
     LOG("pid %d tgid %d", user_pid, user_tgid);
-    walk_user_stacktrace(ctx);
+    walk_user_stacktrace(ctx); //how is this doing things?
     return 0;
   }
 
