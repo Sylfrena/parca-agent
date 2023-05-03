@@ -588,10 +588,10 @@ static __always_inline bool has_fp(u64 current_fp) {
       // currently we seem to be discarding the stacks
 
       LOG("[debug] fp read failed with %d", err);
-      // notice for a lot of these cases, the second last rbp and ra seems different, should we maybe discard this and peek instead?
-      // how to cover for a rbp=5 but err =0 case, i.e. the case before rbp=0 and err<0
-      return false;
+            return false;
     }
+    /* notice for a lot of these cases, the second last rbp and ra seems different, should we maybe discard this and peek instead?
+     how to cover for a rbp=5 but err =0 case, i.e. the case before rbp=0 and err<0 */
 
     // Some cpp binaries, such as testdata/out/basic-cpp
     // seem to have rbp set to 1 in the bottom frame. This
@@ -614,67 +614,6 @@ static __always_inline bool has_fp(u64 current_fp) {
   return false;
 }
 
-// Try to walk JITed sections
-static __always_inline bool walk_jitted(unwind_state_t *unwind_state) {
-  u64 next_fp;
-  u64 ra = 0;
-  u64 len = unwind_state->stack.len;
-
-  // LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip,
-  // unwind_state->sp,unwind_state->bp);
-
-  for (int i = 0; i < MAX_STACK_DEPTH; i++) {
-    // reading frame pointer
-    int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
-     if (err < 0) { // if err, then just add the current frame?
-      return false;
-    }
-
-    LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
-    if (len >= 0 && len < MAX_STACK_DEPTH) {
-        // reading return address
-        int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
-        // add ra frame only if no err
-        if (err >= 0) {
-            unwind_state->stack.addresses[len] = ra;
-        }
-    }
-    LOG("[debug] wj2 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
-    if (err < 0) { // if err, then just add the current frame?
-      return false;
-    }
-
-    if (next_fp == 0) { // also check if going outside jited section
-      LOG("[info] found bottom frame while walking JITed section");
-      //// add bottom frame to stack
-      //if (len >= 0 && len < MAX_STACK_DEPTH) {
-      //  int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
-      //  if (err >= 0) {
-      //    unwind_state->stack.addresses[len] = ra;
-      //  }
-      //}
-      unwind_state->bp = next_fp;
-
-      return true;
-    }
-
-    unwind_state->bp = next_fp;
-    len = unwind_state->stack.len;
-
-    if (len >= 0 && len < MAX_STACK_DEPTH) {
-      unwind_state->stack.addresses[len] = ra;
-    }
-
-    // Add address to stack.
-    // Appease the verifier.
-    // if (len >= 0 && len < MAX_STACK_DEPTH) {
-    //  unwind_state->stack.addresses[len] = unwind_state->ip;
-    //}
-  }
-
-  return false;
-}
-
 static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
   process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &pid);
   // Appease the verifier.
@@ -682,10 +621,7 @@ static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
     bpf_printk("[error] should never happen");
     return false;
   }
-  LOG("[debug] Confirming jitted section");
-
-  // bool found = false;
-  // u64 load_address = 0;
+  //LOG("[debug] Confirming jitted section");
 
   u64 executable_id = 0;
   u64 type = 0;
@@ -699,18 +635,15 @@ static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
       bpf_printk("[error] should never happen, verifier");
       return false;
     }
-    LOG("[debug] reachy here");
     if (proc_info->mappings[i].begin <= ip && ip <= proc_info->mappings[i].end) {
-      //  found = true;
-      //  load_address = proc_info->mappings[i].load_address;
       executable_id = proc_info->mappings[i].executable_id;
       begin = proc_info->mappings[i].begin;
       end = proc_info->mappings[i].end;
       type = proc_info->mappings[i].type;
-      LOG("[debug] jit section: %llx, %llx, %llx, %llx, %llx", begin, end, executable_id, type);
+      //LOG("[debug] jit section: %llx, %llx, %llx, %llx, %llx", begin, end, executable_id, type);
       break;
     }
-  }
+  } //okay what on earth was I doing here?
   if (type == 1) {
     return true;
   }
@@ -774,6 +707,68 @@ static __always_inline void add_stack(struct bpf_perf_event_data *ctx, u64 pid_t
   request_process_mappings(ctx, user_pid);
 }
 
+// Try to walk JITed sections
+static __always_inline bool walk_jitted(struct bpf_perf_event_data *ctx, u64 pid_tgid ,unwind_state_t *unwind_state) {
+  u64 next_fp;
+  u64 ra = 0;
+  u64 len = unwind_state->stack.len;
+
+  // LOG("[debug] starting JIT walk: unwind_state->ip = %llx, unwind_state->sp = %llx && unwind_state->rbp = %llx",unwind_state->ip,
+  // unwind_state->sp,unwind_state->bp);
+
+  for (int i = 0; i < MAX_STACK_DEPTH; i++) {
+    // reading frame pointer
+    int err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
+    if (err < 0) { // if err, then just add the current frame?
+      return false;
+    }
+
+    //LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+
+    if (len >= 0 && len < MAX_STACK_DEPTH) {
+        // reading return address
+        int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+        //LOG("[debug] wj2 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+        if (err < 0) { // if err, then just add the current frame?
+            return false;
+        }
+        // add ra frame
+        unwind_state->stack.addresses[len] = ra;
+    }
+
+    if (next_fp == 0) { // also check if going outside jited section
+      LOG("[info] found bottom frame while walking JITed section");
+      // add bottom frame to stack
+      // if (len >= 0 && len < MAX_STACK_DEPTH) {
+      //  int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+      //  if (err >= 0) {
+      //    unwind_state->stack.addresses[len] = ra;
+      //  }
+      //}
+      unwind_state->bp = next_fp;
+      return true;
+    }
+
+    unwind_state->bp = next_fp;
+    len = unwind_state->stack.len;
+
+    if (len >= 0 && len < MAX_STACK_DEPTH) {
+      unwind_state->stack.addresses[len] = ra;
+    }
+
+    // Add address to stack.
+    // Appease the verifier.
+    // if (len >= 0 && len < MAX_STACK_DEPTH) {
+    //  unwind_state->stack.addresses[len] = unwind_state->ip;
+    //}
+
+  }
+  //add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_DWARF, unwind_state);
+
+  return false;
+}
+
+
 // The unwinding machinery lives here.
 SEC("perf_event")
 int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
@@ -809,7 +804,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
       LOG("reaching walk_jitted");
       if (unwinder_config.mixed_stack_walking) {
-        reached_bottom_of_stack = walk_jitted(unwind_state);
+        reached_bottom_of_stack = walk_jitted(ctx, pid_tgid, unwind_state);
         LOG("walked the jitted section");
         if (reached_bottom_of_stack) {
           break;
@@ -1115,13 +1110,13 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
 
   // When we are doing fp based stack walking, sometimes stacks missed out because kernel unwinder
   // (bpf_map_lookup_element) returns quietly and skips frames if bottom frame is not found so we check from latest bp
-  if (has_fp(unwind_state->bp)) {
+  /*if (has_fp(unwind_state->bp)) {
     LOG("[info] checking if FP");
     LOG("[debug] fp success");
     add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL); //why not just adding to unwind addresses?
     return 0;
-  }
-  // will we not end up running this even in dwarf mode? oh no, because stack walking would be zero. would it?
+  }*/
+  // will we not end up running this even in dwarf mode? oh no, because stack walking would be zero. would it?. nah, that's not how enums work
 
   if (has_unwind_information(user_pid)) {
     bump_samples();
@@ -1139,32 +1134,31 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
       LOG("[debug] this me");
 
       if (unwind_table_result == FIND_UNWIND_MAPPING_NOT_FOUND) {
-          LOG("[debug] findunwind");
-        if(confirm_jitted_section((u64)user_pid, unwind_state->ip)) {
-          LOG("JITed section?, trying to walk");
-          LOG("\tcurrent pc: %llx", unwind_state->ip);
-          LOG("\tcurrent sp: %llx", unwind_state->sp);
-          LOG("\tcurrent bp: %llx", unwind_state->bp);
-          LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
-          LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
-          LOG("reaching walk_jitted");
-          if (unwinder_config.mixed_stack_walking) {
-            bool reached_bottom_of_stack = walk_jitted(unwind_state);
-            LOG("walked the jitted section");
-            if (reached_bottom_of_stack){
-            }
-          }
-          LOG("returning from jitted section");
-          //return 1; 1 is error case, we want to return succes case here; how to go from here to 1169?
-        }
         request_refresh_process_info(ctx, user_pid);
         bump_unwind_error_pc_not_covered();
       } else if (unwind_table_result == FIND_UNWIND_JITTED) { //what use case is this?
+          LOG("[debug] findunwindjitted");
+          if(confirm_jitted_section((u64)user_pid, unwind_state->ip)) {
+            LOG("JITed section?, trying to walk");
+            LOG("\tcurrent pc: %llx \tcurrent sp: %llx \tcurrent bp: %llx", unwind_state->ip, unwind_state->sp, unwind_state->bp);
+            LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
+            LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
+            if (unwinder_config.mixed_stack_walking) {
+              LOG("reaching walk_jitted");
+              bool reached_bottom_of_stack = walk_jitted(ctx, pid_tgid, unwind_state);
+              LOG("walked the jitted section");
+              if (reached_bottom_of_stack){
+                LOG("returning from jitted section");
+                return 0;
+              }
+            }
+            return 0; //1 is error case, we want to return succes case here; how to go from here to 1169?
+          }
         LOG("[debug] notmykindaJITed");
         bump_unwind_error_jit();
       } else if (proc_info->is_jit_compiler) {  //what is going on here? document all this.
       //TODO: separate this from other kind jit error
-        LOG("[debug] notmykindaJITed");
+        LOG("[debug] notmykindaJITed2");
         request_refresh_process_info(ctx, user_pid);
         // We assume this failed because of a new JIT segment.
         bump_unwind_error_jit();
