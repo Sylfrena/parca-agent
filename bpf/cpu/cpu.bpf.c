@@ -79,7 +79,7 @@ _Static_assert(1 << MAX_BINARY_SEARCH_DEPTH >= MAX_UNWIND_TABLE_SIZE, "unwind ta
 enum stack_walking_method {
   STACK_WALKING_METHOD_FP = 0,
   STACK_WALKING_METHOD_DWARF = 1,
-  //STACK_WALKING_METHOD_MIXED = 2,
+  // STACK_WALKING_METHOD_MIXED = 2,
 };
 
 struct unwinder_config_t {
@@ -588,7 +588,7 @@ static __always_inline bool has_fp(u64 current_fp) {
       // currently we seem to be discarding the stacks
 
       LOG("[debug] fp read failed with %d", err);
-            return false;
+      return false;
     }
     /* notice for a lot of these cases, the second last rbp and ra seems different, should we maybe discard this and peek instead?
      how to cover for a rbp=5 but err =0 case, i.e. the case before rbp=0 and err<0 */
@@ -603,7 +603,7 @@ static __always_inline bool has_fp(u64 current_fp) {
     //
     // For both cases above, we prefer to unwind using the
     // DWARF-derived unwind information.
-    if (next_fp == 1) {
+    if (next_fp == 0) {
       LOG("[debug] fp success");
       return i > 0;
     }
@@ -614,14 +614,14 @@ static __always_inline bool has_fp(u64 current_fp) {
   return false;
 }
 
-static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
+/*static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
   process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &pid);
   // Appease the verifier.
   if (proc_info == NULL) {
     bpf_printk("[error] should never happen");
     return false;
   }
-  //LOG("[debug] Confirming jitted section");
+  // LOG("[debug] Confirming jitted section");
 
   u64 executable_id = 0;
   u64 type = 0;
@@ -640,15 +640,15 @@ static __always_inline bool confirm_jitted_section(pid_t pid, u64 ip) {
       begin = proc_info->mappings[i].begin;
       end = proc_info->mappings[i].end;
       type = proc_info->mappings[i].type;
-      //LOG("[debug] jit section: %llx, %llx, %llx, %llx, %llx", begin, end, executable_id, type);
+      // LOG("[debug] jit section: %llx, %llx, %llx, %llx, %llx", begin, end, executable_id, type);
       break;
     }
-  } //okay what on earth was I doing here?
+  } // okay what on earth was I doing here?
   if (type == 1) {
     return true;
   }
   return false;
-}
+}*/
 
 // Aggregate the given stacktrace.
 static __always_inline void add_stack(struct bpf_perf_event_data *ctx, u64 pid_tgid, enum stack_walking_method method, unwind_state_t *unwind_state) {
@@ -708,7 +708,7 @@ static __always_inline void add_stack(struct bpf_perf_event_data *ctx, u64 pid_t
 }
 
 // Try to walk JITed sections
-static __always_inline bool walk_jitted(struct bpf_perf_event_data *ctx, u64 pid_tgid ,unwind_state_t *unwind_state) {
+/* static __always_inline bool walk_jitted(struct bpf_perf_event_data *ctx, u64 pid_tgid, unwind_state_t *unwind_state) {
   u64 next_fp;
   u64 ra = 0;
   u64 len = unwind_state->stack.len;
@@ -723,17 +723,17 @@ static __always_inline bool walk_jitted(struct bpf_perf_event_data *ctx, u64 pid
       return false;
     }
 
-    //LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+    // LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
 
     if (len >= 0 && len < MAX_STACK_DEPTH) {
-        // reading return address
-        int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
-        //LOG("[debug] wj2 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
-        if (err < 0) { // if err, then just add the current frame?
-            return false;
-        }
-        // add ra frame
-        unwind_state->stack.addresses[len] = ra;
+      // reading return address
+      int err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+      // LOG("[debug] wj2 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+      if (err < 0) { // if err, then just add the current frame?
+        return false;
+      }
+      // add ra frame
+      unwind_state->stack.addresses[len] = ra;
     }
 
     if (next_fp == 0) { // also check if going outside jited section
@@ -761,19 +761,18 @@ static __always_inline bool walk_jitted(struct bpf_perf_event_data *ctx, u64 pid
     // if (len >= 0 && len < MAX_STACK_DEPTH) {
     //  unwind_state->stack.addresses[len] = unwind_state->ip;
     //}
-
   }
-  //add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_DWARF, unwind_state);
+  // add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_DWARF, unwind_state);
 
   return false;
-}
-
+}*/
 
 // The unwinding machinery lives here.
 SEC("perf_event")
 int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
   u64 pid_tgid = bpf_get_current_pid_tgid();
   int user_pid = pid_tgid;
+  int err = 0;
 
   bool reached_bottom_of_stack = false;
   u64 zero = 0;
@@ -792,26 +791,65 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     LOG("\tcurrent bp: %llx", unwind_state->bp);
 
     u64 offset = 0;
+
     chunk_info_t *chunk_info = NULL;
     enum find_unwind_table_return unwind_table_result = find_unwind_table(&chunk_info, user_pid, unwind_state->ip, &offset);
+    // maybe enum type shouldn't have a verb?
 
     if (unwind_table_result == FIND_UNWIND_JITTED) {
       LOG("[debug] JIT in unwind machinery");
-      LOG("JIT section, stopping");
+      // add walk fp here
+      // how to add the frame? or do we add_stack() here?
+      //  or just increment bp and ip?
+      //  or do we update it in unwind table? that would be incorrect tho no? // NOPE
+      // walk one frame and add it? so continue; here?
+      // will JITed stacks always have a bottom frame? and end in rbp=0
 
-      return 1;
+      u64 next_fp = 0;
+      u64 ra = 0;
+      u64 len = unwind_state->stack.len;
+
+      err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
+      if (err < 0) { // if err, then just add the current frame?
+        LOG("[debug] i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+        return false;
+      }
+      // LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+      // reading return address
+      err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
+      if (err < 0) { // if err, then just add the current frame?
+        LOG("[debug] wj2 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+        return false;
+      }
+
+      if (next_fp == 0) { // also check if going outside jited section
+        LOG("[info] found bottom frame while walking JITed section");
+        return true;
+      }
+
+      // should we do anything with the stack pointer here too?
+      unwind_state->bp = next_fp;
+      len = unwind_state->stack.len;
+
+      // add ra frame
+      if (len >= 0 && len < MAX_STACK_DEPTH) {
+        unwind_state->stack.addresses[len] = ra;
+      }
+
+      continue;
     } else if (unwind_table_result == FIND_UNWIND_SPECIAL) {
-        LOG("special section, stopping");
-        return 1;
+      LOG("special section, stopping");
+      return 1;
     } else if (unwind_table_result == FIND_UNWIND_MAPPING_NOT_FOUND) {
-        request_refresh_process_info(ctx, user_pid);
-        return 1;
+      request_refresh_process_info(ctx, user_pid);
+      return 1;
     } else if (chunk_info == NULL) {
-        // improve
-        reached_bottom_of_stack = true;
-        break;
+      // improve
+      reached_bottom_of_stack = true;
+      break;
     }
 
+    // fetch unwind table for current shard in chunk ?
     stack_unwind_table_t *unwind_table = bpf_map_lookup_elem(&unwind_tables, &chunk_info->shard_index);
     if (unwind_table == NULL) {
       LOG("unwind table is null :( for shard %llu", chunk_info->shard_index);
@@ -831,7 +869,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
 
     LOG("\t=> table_index: %d", table_idx);
-    LOG("\t=> adjusted pc: %llx", unwind_state->ip - offset); //where are we putting this in unwind_table? does this become found_pc?
+    LOG("\t=> adjusted pc: %llx", unwind_state->ip - offset); // where are we putting this in unwind_table? does this become found_pc?
 
     // Appease the verifier.
     if (table_idx < 0 || table_idx >= MAX_UNWIND_TABLE_SIZE) {
@@ -840,6 +878,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       return 1;
     }
 
+    // if there isn't a lot of difference in usage, let's use either ip or pc?
     u64 found_pc = unwind_table->rows[table_idx].pc;
     u8 found_cfa_type = unwind_table->rows[table_idx].cfa_type;
     u8 found_rbp_type = unwind_table->rows[table_idx].rbp_type;
@@ -865,16 +904,17 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     // For some reason bailing out here if the condition is not true does
     // not work?
     if (len >= 0 && len < MAX_STACK_DEPTH) {
-      unwind_state->stack.addresses[len] = unwind_state->ip;
+      unwind_state->stack.addresses[len] = unwind_state->ip; // ah so we just need to reach here after walking the single frame?
+      // or continue after calling walk_jitted earlier. but then we also need to skip the unwind table bits
     }
 
     if (found_rbp_type == RBP_TYPE_REGISTER || found_rbp_type == RBP_TYPE_EXPRESSION) {
-      LOG("\t[error] frame pointer is %d (register or exp), bailing out", found_rbp_type);
+      LOG("\t[error] frame pointer is %d (register or exp), bailing out", found_rbp_type); // why is this error?
       bump_unwind_error_unsupported_frame_pointer_action();
       return 1;
     }
 
-    u64 previous_rsp = 0;
+    u64 previous_rsp = 0; // why?
     if (found_cfa_type == CFA_TYPE_RBP) {
       previous_rsp = unwind_state->bp + found_cfa_offset;
     } else if (found_cfa_type == CFA_TYPE_RSP) {
@@ -885,7 +925,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         bump_unwind_error_unsupported_expression();
         return 1;
       }
-
+      // everything below this :sob
       LOG("CFA expression found with id %d", found_cfa_offset);
 
       u64 threshold = 0;
@@ -899,13 +939,14 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         bump_unwind_error_should_never_happen();
         return 1;
       }
-
+      // what's happening here?
       previous_rsp = unwind_state->sp + 8 + ((((unwind_state->ip & 15) >= threshold)) << 3);
     } else {
       LOG("\t[unsup] register %d not valid (expected $rbp or $rsp)", found_cfa_type);
       bump_unwind_error_unsupported_cfa_register();
       return 1;
     }
+    // which value?
     // TODO(javierhonduco): A possible check could be to see whether this value
     // is within the stack. This check could be quite brittle though, so if we
     // add it, it would be best to add it only during development.
@@ -914,7 +955,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       bump_unwind_error_catchall();
       return 1;
     }
-
+    // can we use ra here?
     // HACK(javierhonduco): This is an architectural shortcut we can take. As we
     // only support x86_64 at the minute, we can assume that the return address
     // is *always* 8 bytes ahead of the previous stack pointer.
@@ -922,7 +963,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     u64 previous_rip = 0;
     int err = bpf_probe_read_user(&previous_rip, 8, (void *)(previous_rip_addr));
 
-    if (previous_rip == 0) {
+    if (previous_rip == 0) { // main?
       int user_pid = pid_tgid;
       process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &user_pid);
       if (proc_info == NULL) {
@@ -930,7 +971,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         return 1;
       }
 
-      if (proc_info->is_jit_compiler) {
+      if (proc_info->is_jit_compiler) { // what's a jit compiler? how diff from unwind_jit error?
         LOG("[info] rip=0, Section not added, yet");
         bump_unwind_error_jit();
         return 1;
@@ -946,7 +987,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     if (found_rbp_type == RBP_TYPE_UNCHANGED) {
       previous_rbp = unwind_state->bp;
     } else {
-      u64 previous_rbp_addr = previous_rsp + found_rbp_offset;
+      u64 previous_rbp_addr = previous_rsp + found_rbp_offset; // can't we find this from rip instead(which is ra?)?
       LOG("\t(bp_offset: %d, bp value stored at %llx)", found_rbp_offset, previous_rbp_addr);
       int ret = bpf_probe_read_user(&previous_rbp, 8, (void *)(previous_rbp_addr));
       if (ret != 0) {
@@ -957,6 +998,9 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         return 1;
       }
     }
+
+    // another way is we just set rip and rsp and rbp directly so  can reach here
+    //  but if we reach 990 then we will end up doing add_stack with DWARF hm
 
     LOG("\tprevious ip: %llx (@ %llx)", previous_rip, previous_rip_addr);
     LOG("\tprevious sp: %llx", previous_rsp);
@@ -986,7 +1030,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       LOG("======= reached main! =======");
       add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_DWARF, unwind_state);
       bump_unwind_success_dwarf();
-    } else {
+    } else { // is this verifier appeasement?
       int user_pid = pid_tgid;
       process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &user_pid);
       if (proc_info == NULL) {
@@ -994,13 +1038,16 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         return 1;
       }
 
+      // aren't we checking this earlier?
+      // why are so many checks repeated throughout?
+      // could maybe something like coccinelle help to reduce this?
       if (proc_info->is_jit_compiler) {
         LOG("[info] Section not added, yet");
         bump_unwind_error_jit();
         return 1;
       }
 
-      LOG("[error] Could not find unwind table and rbp != 0 (%llx). New mapping?", unwind_state->bp);
+      LOG("[error] Could not find unwind table and rbp != 0 (%llx). New mapping?", unwind_state->bp); // can't this be jitted case?
       request_refresh_process_info(ctx, user_pid);
       bump_unwind_error_pc_not_covered();
     }
@@ -1097,12 +1144,12 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
 
   // When we are doing fp based stack walking, sometimes stacks missed out because kernel unwinder
   // (bpf_map_lookup_element) returns quietly and skips frames if bottom frame is not found so we check from latest bp
-  /*if (has_fp(unwind_state->bp)) {
+  if (has_fp(unwind_state->bp)) {
     LOG("[info] checking if FP");
     LOG("[debug] fp success");
-    add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL); //why not just adding to unwind addresses?
+    add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_FP, NULL); // why not just adding to unwind addresses?
     return 0;
-  }*/
+  }
   // will we not end up running this even in dwarf mode? oh no, because stack walking would be zero. would it?. nah, that's not how enums work
 
   if (has_unwind_information(user_pid)) {
@@ -1123,39 +1170,41 @@ int profile_cpu(struct bpf_perf_event_data *ctx) {
       if (unwind_table_result == FIND_UNWIND_MAPPING_NOT_FOUND) {
         request_refresh_process_info(ctx, user_pid);
         bump_unwind_error_pc_not_covered();
-      } else if (unwind_table_result == FIND_UNWIND_JITTED) { //what use case is this?
-          LOG("[debug] findunwindjitted");
-          if(confirm_jitted_section((u64)user_pid, unwind_state->ip)) {
-            LOG("JITed section?, trying to walk");
-            LOG("\tcurrent pc: %llx \tcurrent sp: %llx \tcurrent bp: %llx", unwind_state->ip, unwind_state->sp, unwind_state->bp);
-            LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
-            LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
-            if (unwinder_config.mixed_stack_walking) {
-              LOG("reaching walk_jitted");
-              bool reached_bottom_of_stack = walk_jitted(ctx, pid_tgid, unwind_state);
-              LOG("walked the jitted section");
-              if (reached_bottom_of_stack){
-                LOG("returning from jitted section");
-                return 0;
-              }
-            }
-            return 0; //1 is error case, we want to return succes case here; how to go from here to 1169?
-          }
-        LOG("[debug] notmykindaJITed");
-        bump_unwind_error_jit();
-      } else if (proc_info->is_jit_compiler) {  //what is going on here? document all this.
-      //TODO: separate this from other kind jit error
+        return 1;
+      } else if (unwind_table_result == FIND_UNWIND_JITTED) { // what use case is this?
+                                                              // LOG("[debug] findunwindjitted");
+                                                              // if (confirm_jitted_section((u64)user_pid, unwind_state->ip)) {
+        // LOG("JITed section?, trying to walk");
+        // LOG("\tcurrent pc: %llx \tcurrent sp: %llx \tcurrent bp: %llx", unwind_state->ip, unwind_state->sp, unwind_state->bp);
+        // LOG("\tcurrent stack: %llx", unwind_state->stack.addresses[MAX_STACK_DEPTH_PER_PROGRAM]);
+        // LOG("\tcurrent tail: %llx", unwind_state->tail_calls);
+        /* if (unwinder_config.mixed_stack_walking) {
+           LOG("reaching walk_jitted");
+           bool reached_bottom_of_stack = walk_jitted(ctx, pid_tgid, unwind_state);
+           LOG("walked the jitted section");
+           if (reached_bottom_of_stack){
+             LOG("returning from jitted section");
+             return 0;
+           }
+         }
+         return 0; //1 is error case, we want to return succes case here; how to go from here to 1169?
+       }
+       */
+
+        // bump_unwind_error_jit();
+
+      } else if (proc_info->is_jit_compiler) { // what is going on here? document all this. ASSUMPTION/HEURISTIC
+        // TODO: separate this from other kind jit error
         LOG("[debug] notmykindaJITed2");
         request_refresh_process_info(ctx, user_pid);
         // We assume this failed because of a new JIT segment.
-        bump_unwind_error_jit();
+        bump_unwind_error_jit(); // reevaluate
+        return 1;
       }
-
-      return 1;
     }
 
     LOG("pid %d tgid %d", user_pid, user_tgid);
-    walk_user_stacktrace(ctx); //how is this doing things?
+    walk_user_stacktrace(ctx); // how is this doing things?
     return 0;
   }
 
