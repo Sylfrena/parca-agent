@@ -636,7 +636,7 @@ func (p *CPU) watchProcesses(ctx context.Context, pfs procfs.FS, matchers []*reg
 			for _, thread := range allThreads() {
 				comm, err := thread.Comm()
 				if err != nil {
-					level.Debug(p.logger).Log("msg", "failed to read process name", "err", err)
+					level.Debug(p.logger).Log("msg", "failed to read process name", "pid", thread.PID, "err", err)
 					continue
 				}
 
@@ -877,18 +877,23 @@ func (p *CPU) obtainProfiles(ctx context.Context) ([]*profiler.Profile, error) {
 						continue
 					}
 					m := pi.Mappings.MappingForAddr(addr)
+
 					// TODO(kakkoyun): What should we do if the mapping is not found for this addr?
 					l := profiler.NewLocation(uint64(locationIndex+1), addr, m)
 
-					// TODO(kakkoyun): Move normalization to a separate stage.
-					// Consider needs of symbolizer.
-					normalizedAddress, err := p.addressNormalizer.Normalize(m, addr)
-					if err != nil {
-						level.Debug(p.logger).Log("msg", "failed to normalize address", "pid", id.PID, "address", fmt.Sprintf("%x", addr), "err", err)
-						// Drop stack if a frame failed to normalize.
-						continue
+					if m.Pathname == "" {
+						l.Address = addr
+					} else {
+						// TODO(kakkoyun): Move normalization to a separate stage.
+						// Consider needs of symbolizer.
+						normalizedAddress, err := p.addressNormalizer.Normalize(m, addr)
+						if err != nil {
+							level.Debug(p.logger).Log("msg", "failed to normalize address", "pid", id.PID, "address", fmt.Sprintf("%x", addr), "err", err)
+							// Drop stack if a frame failed to normalize.
+							continue
+						}
+						l.Address = normalizedAddress
 					}
-					l.Address = normalizedAddress
 
 					locations[id] = append(locations[id], l)
 					userLocations[id] = append(userLocations[id], l)

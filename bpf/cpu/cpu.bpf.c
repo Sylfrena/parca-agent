@@ -811,10 +811,11 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
 
       err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
       if (err < 0) { // if err, then just add the current frame?
-        LOG("[debug] i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+        LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
         return false;
       }
-      // LOG("[debug] wj1 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
+
+      LOG("[debug] wj3 i=%d, err = %d && rbp = %llx && ra=%llx", i, err, next_fp, ra);
       // reading return address
       err = bpf_probe_read_user(&ra, 8, (void *)unwind_state->bp + 8);
       if (err < 0) { // if err, then just add the current frame?
@@ -828,13 +829,17 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       }
 
       // should we do anything with the stack pointer here too?
+      unwind_state->sp = unwind_state->bp + 16;
       unwind_state->bp = next_fp;
+      unwind_state->ip = ra - 1 ; //just listening to Javier //pointing at code segment
       len = unwind_state->stack.len;
 
       // add ra frame
       if (len >= 0 && len < MAX_STACK_DEPTH) {
         unwind_state->stack.addresses[len] = ra;
       }
+
+      unwind_state->stack.len++;
 
       continue;
     } else if (unwind_table_result == FIND_UNWIND_SPECIAL) {
