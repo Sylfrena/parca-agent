@@ -188,6 +188,7 @@ typedef struct {
   u64 bp;
   u32 tail_calls;
   stack_trace_t stack;
+  bool jitted; // set to true during jitted unwinding
 } unwind_state_t;
 
 // A row in the stack unwinding table for x86_64.
@@ -581,13 +582,13 @@ static __always_inline bool has_fp(u64 current_fp) {
     int err = bpf_probe_read_user(&next_fp, 8, (void *)current_fp);
     bpf_probe_read_user(&ra, 8, (void *)current_fp + 8);
 
-    bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx && ra = %llx", i, err, next_fp, ra);
+    // bpf_printk("__ RBP:  i=%d err = %d && rbp = %llx && ra = %llx", i, err, next_fp, ra);
     if (err < 0) {
       // when err < 0 and rbp == 0, maybe we have stumbled on a section that can be unwound with DWARF instead
       // in this case, should we just walk till here and then switch over to dwarf?
       // currently we seem to be discarding the stacks
 
-      LOG("[debug] fp read failed with %d", err);
+      LOG("[debug] has_fp read failed with %d", err);
       return false;
     }
     /* notice for a lot of these cases, the second last rbp and ra seems different, should we maybe discard this and peek instead?
@@ -784,6 +785,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
   }
 
   for (int i = 0; i < MAX_STACK_DEPTH_PER_PROGRAM; i++) {
+    LOG("Within impl for loop");
     LOG("## frame: %d", unwind_state->stack.len);
 
     LOG("\tcurrent pc: %llx", unwind_state->ip);
@@ -798,6 +800,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
 
     if (unwind_table_result == FIND_UNWIND_JITTED) {
       LOG("[debug] JIT in unwind machinery");
+
       // add walk fp here
       // how to add the frame? or do we add_stack() here?
       //  or just increment bp and ip?
@@ -805,9 +808,18 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       // walk one frame and add it? so continue; here?
       // will JITed stacks always have a bottom frame? and end in rbp=0
 
+      unwind_state->jitted = true;
+
       u64 next_fp = 0;
       u64 ra = 0;
       u64 len = unwind_state->stack.len;
+
+      if (unwind_state->stack.len == 0) {
+        if (len >= 0 && len < MAX_STACK_DEPTH) {
+          unwind_state->stack.addresses[len] = unwind_state->ip;
+          unwind_state->stack.len++;
+        }
+      }
 
       err = bpf_probe_read_user(&next_fp, 8, (void *)unwind_state->bp);
       if (err < 0) { // if err, then just add the current frame?
@@ -828,10 +840,18 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         return true;
       }
 
+      if (i == 0) {
+        LOG("## frame: %d", unwind_state->stack.len);
+
+        LOG("\tcurrent pc: %llx", unwind_state->ip);
+        LOG("\tcurrent sp: %llx", unwind_state->sp);
+        LOG("\tcurrent bp: %llx", unwind_state->bp);
+      }
+
       // should we do anything with the stack pointer here too?
       unwind_state->sp = unwind_state->bp + 16;
       unwind_state->bp = next_fp;
-      unwind_state->ip = ra - 1 ; //just listening to Javier //pointing at code segment
+      unwind_state->ip = ra - 1; // just listening to Javier //pointing at code segment
       len = unwind_state->stack.len;
 
       // add ra frame
@@ -903,15 +923,23 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       break;
     }
 
+    LOG("[debug] mixed mode section %d", unwind_state->jitted);
+
     // Add address to stack.
     u64 len = unwind_state->stack.len;
     // Appease the verifier.
     // For some reason bailing out here if the condition is not true does
     // not work?
-    if (len >= 0 && len < MAX_STACK_DEPTH) {
-      unwind_state->stack.addresses[len] = unwind_state->ip; // ah so we just need to reach here after walking the single frame?
-      // or continue after calling walk_jitted earlier. but then we also need to skip the unwind table bits
+    if (!unwind_state->jitted) {
+      if (len >= 0 && len < MAX_STACK_DEPTH) {
+        unwind_state->stack.addresses[len] = unwind_state->ip;
+
+        unwind_state->stack.len++;
+      }
     }
+
+    unwind_state->jitted = false;
+    LOG("[debug] mixed mode section second round %d", unwind_state->jitted);
 
     if (found_rbp_type == RBP_TYPE_REGISTER || found_rbp_type == RBP_TYPE_EXPRESSION) {
       LOG("\t[error] frame pointer is %d (register or exp), bailing out", found_rbp_type); // why is this error?
@@ -1017,7 +1045,6 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     unwind_state->bp = previous_rbp;
 
     // Frame finished! :)
-    unwind_state->stack.len++;
   }
 
   if (reached_bottom_of_stack) {
@@ -1031,6 +1058,8 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     // > stack frame by setting the frame > pointer to zero.
     //
     // https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf
+    LOG("[debug] reachy reachy bottom %d", unwind_state->jitted);
+
     if (unwind_state->bp == 0) {
       LOG("======= reached main! =======");
       add_stack(ctx, pid_tgid, STACK_WALKING_METHOD_DWARF, unwind_state);
@@ -1082,6 +1111,7 @@ static __always_inline bool set_initial_state(struct pt_regs *regs) {
   // we aren't reading garbage data.
   unwind_state->stack.len = 0;
   unwind_state->tail_calls = 0;
+  unwind_state->jitted = false;
 
   u64 ip = 0;
   u64 sp = 0;
