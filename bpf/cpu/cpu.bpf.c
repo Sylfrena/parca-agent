@@ -55,6 +55,9 @@ _Static_assert(1 << MAX_BINARY_SEARCH_DEPTH >= MAX_UNWIND_TABLE_SIZE, "unwind ta
 // Special values.
 #define CFA_TYPE_END_OF_FDE_MARKER 4
 
+#define CFA_TYPE_RBP_ARM 1
+#define CFA_TYPE_RSP_ARM 2
+
 // Values for the unwind table's frame pointer type.
 #define RBP_TYPE_UNCHANGED 0
 #define RBP_TYPE_OFFSET 1
