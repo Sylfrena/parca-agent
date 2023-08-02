@@ -289,8 +289,9 @@ func main() {
 	intro.Print()
 
 	if runtime.GOARCH == "arm64" {
-		flags.DWARFUnwinding.Disable = true
-		level.Info(logger).Log("msg", "ARM64 support is currently in beta. DWARF-based unwinding is not supported yet, see https://github.com/parca-dev/parca-agent/discussions/1376 for more details")
+		flags.DWARFUnwinding.Disable = false
+		level.Debug(logger).Log("msg", "dwarf unwinding arm64 huhu")
+		//level.Info(logger).Log("msg", "ARM64 support is currently in beta. DWARF-based unwinding is not supported yet, see https://github.com/parca-dev/parca-agent/discussions/1376 for more details")
 	}
 
 	// Memlock rlimit 0 means no limit.
