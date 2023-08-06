@@ -56,6 +56,22 @@ func x64RegisterToString(reg uint64) string {
 	return x86_64Regs[reg]
 }
 
+func arm64RegisterToString(reg uint64) string {
+	// TODO(sylfrena): add link to doc
+	// Procedure Call Standard, aarch64, sec 6.1.1
+	// maybe r0...r30 will also work, but x0..x30 preferred for 64 bit archs and
+	// what `gdb` shows on passing `info all-registers`
+	// "sp" and "pc" and "cpsr" are also taken from `gdb`
+	arm64Regs := []string{
+		"x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+		"x12", "x13", "x14", "x15", "x16", "x17", "x18", "x18", "x19", "x20",
+		"x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "bb30", //x30 -> lr // BIG PROBLEM
+		"sp", "pc", "cpsr",
+	}
+
+	return arm64Regs[reg]
+}
+
 // PrintTable is a debugging helper that prints the unwinding table to the given io.Writer.
 func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact bool, pc *uint64) error {
 	fdes, err := ReadFDEs(path)
@@ -94,6 +110,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 					return err
 				}
 
+				// TODO(sylfrena): add for arm64
 				fmt.Fprintf(writer, "\t")
 				fmt.Fprintf(writer, "pc: %x ", compactRow.Pc())
 				fmt.Fprintf(writer, "cfa_type: %-2d ", compactRow.CfaType())
@@ -105,14 +122,15 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				//nolint:exhaustive
 				switch unwindRow.CFA.Rule {
 				case frame.RuleCFA:
-					CFAReg := x64RegisterToString(unwindRow.CFA.Reg)
-					fmt.Fprintf(writer, "\tLoc: %x CFA: $%s=%-4d", unwindRow.Loc, CFAReg, unwindRow.CFA.Offset)
+					//CFAReg := x64RegisterToString(unwindRow.CFA.Reg)
+					CFAReg := arm64RegisterToString(unwindRow.CFA.Reg)
+					fmt.Fprintf(writer, "\tLoc: %x CFA: $%s=%-4d", unwindRow.Loc, CFAReg, unwindRow.CFA.Offset) // TODO(Sylfrena): correct
 				case frame.RuleExpression:
 					expressionID := ExpressionIdentifier(unwindRow.CFA.Expression)
 					if expressionID == ExpressionUnknown {
-						fmt.Fprintf(writer, "\tLoc: %x CFA: exp     ", unwindRow.Loc)
+						fmt.Fprintf(writer, "\tLoc: %x CFAunk: exp     ", unwindRow.Loc)
 					} else {
-						fmt.Fprintf(writer, "\tLoc: %x CFA: exp (plt %d)", unwindRow.Loc, expressionID)
+						fmt.Fprintf(writer, "\tLoc: %x CFAother: exp (plt %d)", unwindRow.Loc, expressionID)
 					}
 				default:
 					return fmt.Errorf("CFA rule is not valid. This should never happen")
@@ -124,10 +142,15 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				case frame.RuleUndefined, frame.RuleUnknown:
 					fmt.Fprintf(writer, "\tRBP: u")
 				case frame.RuleRegister:
-					RBPReg := x64RegisterToString(unwindRow.RBP.Reg)
+					// TODO(sylfrena)
+					//RBPReg := x64RegisterToString(unwindRow.RBP.Reg)
+					RBPReg := arm64RegisterToString(unwindRow.RBP.Reg)
 					fmt.Fprintf(writer, "\tRBP: $%s", RBPReg)
+					RAReg := arm64RegisterToString(unwindRow.RA.Reg)
+					fmt.Fprintf(writer, "\tRA: $%s", RAReg)
 				case frame.RuleOffset:
 					fmt.Fprintf(writer, "\tRBP: c%-4d", unwindRow.RBP.Offset)
+					// how do you decide it is an rbp offset? when there can be other registers mentioned?
 				case frame.RuleExpression:
 					fmt.Fprintf(writer, "\tRBP: exp")
 				default:

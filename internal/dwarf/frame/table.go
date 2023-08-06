@@ -29,6 +29,10 @@ const (
 const (
 	X86_64FramePointer = 6 // $rbp
 	X86_64StackPointer = 7 // $rsp
+	// TODO(sylfrena): change to constant values that make more sense, not 42 :P
+	Arm64FramePointer = 421 // $fp
+	Arm64StackPointer = 422 // $sp or $r31
+	Arm64LinkRegister = 433 //$x30 or $lr
 )
 
 type UnwindRegisters struct {

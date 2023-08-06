@@ -912,9 +912,9 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       }
       previous_rsp = unwind_state->sp + 8 + ((((unwind_state->ip & 15) >= threshold)) << 3);
     } else {
-      LOG("\t[unsup] register %d not valid (expected $rbp or $rsp)", found_cfa_type);
+      LOG("\t[unsup] blahh register %d not valid (expected $rbp or $rsp)", found_cfa_type);
       bump_unwind_error_unsupported_cfa_register();
-      return 1;
+      //return 1;
     }
 
     // TODO(javierhonduco): A possible check could be to see whether this value
