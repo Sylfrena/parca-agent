@@ -46,12 +46,12 @@ func TestCompactUnwindTable(t *testing.T) {
 				RA:  frame.DWRule{Rule: frame.RuleOffset, Offset: -8},
 			},
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           2,
-				rbpType:           0,
-				cfaOffset:         8,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        122,
+				cfaType:   2,
+				rbpType:   0,
+				cfaOffset: 8,
+				rbpOffset: 0,
 			},
 		},
 		{
@@ -64,12 +64,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           1,
-				rbpType:           0,
-				cfaOffset:         8,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        122,
+				cfaType:   1,
+				rbpType:   0,
+				cfaOffset: 8,
+				rbpOffset: 0,
 			},
 		},
 		{
@@ -82,12 +82,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           3,
-				rbpType:           0,
-				cfaOffset:         1,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        0,
+				cfaType:   3,
+				rbpType:   0,
+				cfaOffset: 1,
+				rbpOffset: 0,
 			},
 		},
 		{
@@ -100,12 +100,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           3,
-				rbpType:           0,
-				cfaOffset:         2,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        122,
+				cfaType:   3,
+				rbpType:   0,
+				cfaOffset: 2,
+				rbpOffset: 0,
 			},
 		},
 		{
@@ -118,12 +118,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           3,
-				rbpType:           0,
-				cfaOffset:         0,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        122,
+				cfaType:   3,
+				rbpType:   0,
+				cfaOffset: 0,
+				rbpOffset: 0,
 			},
 		},
 		{
@@ -136,12 +136,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           2,
-				rbpType:           1,
-				cfaOffset:         8,
-				rbpOffset:         64,
+				pc:        123,
+				lr:        122,
+				cfaType:   2,
+				rbpType:   1,
+				cfaOffset: 8,
+				rbpOffset: 64,
 			},
 		},
 		{
@@ -154,12 +154,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           2,
-				rbpType:           2,
-				cfaOffset:         8,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        122,
+				cfaType:   2,
+				rbpType:   2,
+				cfaOffset: 8,
+				rbpOffset: 0,
 			},
 		},
 		{
@@ -172,12 +172,12 @@ func TestCompactUnwindTable(t *testing.T) {
 			},
 
 			want: CompactUnwindTableRow{
-				pc:                123,
-				_reservedDoNotUse: 0,
-				cfaType:           2,
-				rbpType:           3,
-				cfaOffset:         8,
-				rbpOffset:         0,
+				pc:        123,
+				lr:        122,
+				cfaType:   2,
+				rbpType:   3,
+				cfaOffset: 8,
+				rbpOffset: 0,
 			},
 		},
 		{

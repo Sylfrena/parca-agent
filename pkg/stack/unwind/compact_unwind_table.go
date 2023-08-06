@@ -29,6 +29,9 @@ const (
 	cfaTypeRsp
 	cfaTypeExpression
 	cfaTypeEndFdeMarker
+	cfaTypeFp
+	cfaTypeSp
+	cfaTypeLr
 )
 
 type bpfRbpType uint16
@@ -43,20 +46,24 @@ const (
 
 // CompactUnwindTableRows encodes unwind information using 2x 64 bit words.
 type CompactUnwindTableRow struct {
-	pc                uint64
-	_reservedDoNotUse uint16
-	cfaType           uint8
-	rbpType           uint8
-	cfaOffset         int16
-	rbpOffset         int16
+	pc        uint64
+	lr        uint16 // link register for arm64; ignore for x86
+	cfaType   uint8
+	rbpType   uint8
+	cfaOffset int16
+	rbpOffset int16
 }
 
 func (cutr *CompactUnwindTableRow) Pc() uint64 {
 	return cutr.pc
 }
 
-func (cutr *CompactUnwindTableRow) ReservedDoNotUse() uint16 {
+/*func (cutr *CompactUnwindTableRow) ReservedDoNotUse() uint16 {
 	return cutr._reservedDoNotUse
+}*/
+
+func (cutr *CompactUnwindTableRow) Lr() uint16 {
+	return cutr.lr
 }
 
 func (cutr *CompactUnwindTableRow) CfaType() uint8 {
@@ -114,6 +121,7 @@ func rowToCompactRow(row *UnwindTableRow) (CompactUnwindTableRow, error) {
 	var rbpType uint8
 	var cfaOffset int16
 	var rbpOffset int16
+	var cfaTypeLr uint16
 
 	// CFA.
 	//nolint:exhaustive
@@ -123,6 +131,13 @@ func rowToCompactRow(row *UnwindTableRow) (CompactUnwindTableRow, error) {
 			cfaType = uint8(cfaTypeRbp)
 		} else if row.CFA.Reg == frame.X86_64StackPointer {
 			cfaType = uint8(cfaTypeRsp)
+		} else if row.CFA.Reg == frame.Arm64FramePointer {
+			cfaType = uint8(cfaTypeFp) // TODO(sylfrena): check number of bytes
+		} else if row.CFA.Reg == frame.Arm64StackPointer {
+			cfaType = uint8(cfaTypeSp) // TODO(sylfrena): check bytes, it is just sp for arm64 btw
+		} else if row.CFA.Reg == frame.Arm64LinkRegister {
+			cfaTypeLr = uint16(cfaTypeLr) // TODO(sylfrena): check bytes
+
 		}
 		cfaOffset = int16(row.CFA.Offset)
 	case frame.RuleExpression:
@@ -132,6 +147,7 @@ func rowToCompactRow(row *UnwindTableRow) (CompactUnwindTableRow, error) {
 		return CompactUnwindTableRow{}, fmt.Errorf("CFA rule is not valid: %d", row.CFA.Rule)
 	}
 
+	// TODO(sylfrena): change for arm64
 	// Frame pointer.
 	switch row.RBP.Rule {
 	case frame.RuleOffset:
@@ -149,18 +165,19 @@ func rowToCompactRow(row *UnwindTableRow) (CompactUnwindTableRow, error) {
 	case frame.RuleCFA:
 	}
 
+	// TODO(sylfrena): change for arm64
 	// Return address.
 	if row.RA.Rule == frame.RuleUndefined {
 		rbpType = uint8(rbpTypeUndefinedReturnAddress)
 	}
 
 	return CompactUnwindTableRow{
-		pc:                row.Loc,
-		_reservedDoNotUse: 0,
-		cfaType:           cfaType,
-		rbpType:           rbpType,
-		cfaOffset:         cfaOffset,
-		rbpOffset:         rbpOffset,
+		pc:        row.Loc,
+		lr:        uint16(cfaType),
+		cfaType:   cfaType,
+		rbpType:   rbpType,
+		cfaOffset: cfaOffset,
+		rbpOffset: rbpOffset,
 	}, nil
 }
 

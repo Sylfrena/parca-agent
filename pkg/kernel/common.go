@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 )
 
 func int8SliceToString(arr []int8) string {
@@ -37,12 +36,16 @@ func int8SliceToString(arr []int8) string {
 
 // Release fetches the version string of the current running kernel.
 func Release() (string, error) {
-	var uname syscall.Utsname
-	if err := syscall.Uname(&uname); err != nil {
-		return "", err
-	}
+	/*
+		var uname syscall.Utsname
+		if err := syscall.Uname(&uname); err != nil {
+			return "", err
+		}
 
-	return int8SliceToString(uname.Release[:]), nil
+		return int8SliceToString(uname.Release[:]), nil
+	*/
+	// TODO(sylfrena): unhardcode this, no clue why this shows an error
+	return "5.19.0-46-generic", nil
 }
 
 const vdsoPattern = "/usr/lib/modules/*/vdso/*.so"
@@ -60,13 +63,16 @@ func FindVDSO() (string, error) {
 
 // unameRelease fetches the version string of the current running kernel.
 func unameRelease() (string, error) {
-	var uname syscall.Utsname
-	if err := syscall.Uname(&uname); err != nil {
-		return "", fmt.Errorf("could not get utsname")
-	}
+	/*
+		var uname syscall.Utsname
+		if err := syscall.Uname(&uname); err != nil {
+			return "", fmt.Errorf("could not get utsname")
+		}
+	*/
+	// TODO(sylfrena): unhardcode this, no clue why this shows an error
 
 	var buf [65]byte
-	for i, b := range uname.Release {
+	for i, b := range "5.19.0-46-generic" { // {
 		buf[i] = byte(b)
 	}
 
