@@ -32,7 +32,7 @@ const (
 	cfaTypeRsp
 	cfaTypeExpression
 	cfaTypeEndFdeMarker
-	// cfaTypeFp cfa type is likely not defined for fp for arm64
+	cfaTypeFp // cfa type is likely not defined for fp for arm64
 	cfaTypeSp // for arm64
 	cfaTypeLr // for arm64
 )
@@ -137,11 +137,11 @@ func rowToCompactRow(row *UnwindTableRow) (CompactUnwindTableRow, error) {
 		// } else if row.CFA.Reg == frame.X86_64StackPointer {
 		// 	cfaType = uint8(cfaTypeRsp)
 		// } else
-		// if row.CFA.Reg == frame.Arm64FramePointer {
-		//	cfaType = uint8(cfaTypeFp) // TODO(sylfrena): check number of bytes
-		//} else
-		// cfa type only seems to be for sp, not fp in arm64
-		if row.CFA.Reg == frame.Arm64StackPointer {
+		//
+		// ~~cfa type only seems to be for sp, not fp in arm64~~ wrong assumption (check readelf for glibc)
+		if row.CFA.Reg == frame.Arm64FramePointer {
+			cfaType = uint8(cfaTypeFp) // TODO(sylfrena): check number of bytes
+		} else if row.CFA.Reg == frame.Arm64StackPointer {
 			cfaType = uint8(cfaTypeSp) // TODO(sylfrena): check bytes, it is just sp for arm64 btw
 		}
 		cfaOffset = int16(row.CFA.Offset)
