@@ -24,22 +24,25 @@ const (
 	RuleCFA // Value is rule.Reg + rule.Offset
 )
 
-// From 3.4.1 Initial Stack and Register State
+// NOTE:
+// Each register in arm64 or x86 has a DWARF Register Number mapped
+// to its architecture specific Register Name defined in its respective spec.
+// The register numbers are not arbitrary constants but obtained from the spec
+// linked below for each architecture.
+//
+// From 3.4.1 Initial Stack and Register State for x86_64
 // https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf
+// From 4.1 DWARF Register Names for Aarch64/Arm64
+// https://github.com/ARM-software/abi-aa/blob/2023q1-release/aadwarf64/aadwarf64.rst#dwarf-register-names
+// TODO(sylfrena): Check the notes for arm64 against the register numbers^
 const (
-	X86_64FramePointer = 6 // $rbp
-	X86_64StackPointer = 7 // $rsp
-	// TODO(sylfrena): change to constant values that make more sense, not 42 :P
-	Arm64FramePointer = 421 // $fp
-	Arm64StackPointer = 422 // $sp or $r31
-	Arm64LinkRegister = 433 //$x30 or $lr
+	X86_64FramePointer = 6  // $rbp
+	X86_64StackPointer = 7  // $rsp
+	Arm64FramePointer  = 29 // $fp // assumption: frame pointers are not stripped
+	Arm64StackPointer  = 31 // $sp or $r31
+	Arm64LinkRegister  = 30 //$x30 or $lr
+	// Arm64ProgramCounter = 32 //$x32; may be needed later while unwinding
 )
-
-type UnwindRegisters struct {
-	StackPointer DWRule
-	FramePointer DWRule
-	SavedReturn  DWRule
-}
 
 // DWRule wrapper of rule defined for register values.
 type DWRule struct {
@@ -49,10 +52,16 @@ type DWRule struct {
 	Expression []byte
 }
 
+type UnwindRegisters struct {
+	StackPointer DWRule
+	FramePointer DWRule
+	SavedReturn  DWRule // save LinkRegister in here TODO(sylfrena)
+}
+
 // InstructionContext represents each object code instruction
 // that we have unwind information for.
 type InstructionContext struct {
-	loc           uint64
+	loc           uint64 // holds the PC
 	CFA           DWRule
 	Regs          UnwindRegisters
 	initialRegs   UnwindRegisters
@@ -397,26 +406,28 @@ func lookupFunc(instruction byte, ctx *Context) instruction {
 	return fn
 }
 
+// TODO(sylfrena): add for arm64
 func setRule(reg uint64, frame *InstructionContext, rule DWRule) {
 	switch reg {
-	case X86_64StackPointer:
+	case Arm64StackPointer: //case X86_64StackPointer:
 		frame.Regs.StackPointer = rule
-	case X86_64FramePointer:
+	case Arm64FramePointer: //X86_64FramePointer:
 		frame.Regs.FramePointer = rule
-	case frame.RetAddrReg:
+	case Arm64LinkRegister: //frame.RetAddrReg: //should I just let it remain? // yes reuse it, but write a comment
 		frame.Regs.SavedReturn = rule
 	}
 }
 
 func restoreRule(reg uint64, frame *InstructionContext) {
 	switch reg {
-	case X86_64StackPointer:
+	// TODO(sylfrena): add for arm64
+	case Arm64StackPointer: //case X86_64StackPointer:
 		if frame.initialRegs.StackPointer.Rule == RuleUnknown {
 			frame.Regs.StackPointer = DWRule{Rule: RuleUndefined}
 		} else {
 			frame.Regs.StackPointer = DWRule{Offset: frame.initialRegs.StackPointer.Offset, Rule: RuleOffset}
 		}
-	case X86_64FramePointer:
+	case Arm64FramePointer: //X86_64FramePointer: // arm64
 		if frame.initialRegs.FramePointer.Rule == RuleUnknown {
 			frame.Regs.FramePointer = DWRule{Rule: RuleUndefined}
 		} else {

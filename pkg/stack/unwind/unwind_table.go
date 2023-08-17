@@ -62,10 +62,14 @@ func arm64RegisterToString(reg uint64) string {
 	// maybe r0...r30 will also work, but x0..x30 preferred for 64 bit archs and
 	// what `gdb` shows on passing `info all-registers`
 	// "sp" and "pc" and "cpsr" are also taken from `gdb`
+	// x29 -> fp
+	// x30 -> lr
+	// x31 -> sp
+	// x32 -> pc
 	arm64Regs := []string{
 		"x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
 		"x12", "x13", "x14", "x15", "x16", "x17", "x18", "x18", "x19", "x20",
-		"x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "bb30", //x30 -> lr // BIG PROBLEM
+		"x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30",
 		"sp", "pc", "cpsr",
 	}
 
@@ -117,6 +121,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				fmt.Fprintf(writer, "rbp_type: %-2d ", compactRow.RbpType())
 				fmt.Fprintf(writer, "cfa_offset: %-4d ", compactRow.CfaOffset())
 				fmt.Fprintf(writer, "rbp_offset: %-4d", compactRow.RbpOffset())
+				fmt.Fprintf(writer, "lr_offset: %-4d", compactRow.LrOffset())
 				fmt.Fprintf(writer, "\n")
 			} else {
 				//nolint:exhaustive
@@ -146,15 +151,34 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 					//RBPReg := x64RegisterToString(unwindRow.RBP.Reg)
 					RBPReg := arm64RegisterToString(unwindRow.RBP.Reg)
 					fmt.Fprintf(writer, "\tRBP: $%s", RBPReg)
-					RAReg := arm64RegisterToString(unwindRow.RA.Reg)
-					fmt.Fprintf(writer, "\tRA: $%s", RAReg)
 				case frame.RuleOffset:
+					// Interesting we end up here and register is not assigned
+					// TODO(sylfrena): verify if this is expected
 					fmt.Fprintf(writer, "\tRBP: c%-4d", unwindRow.RBP.Offset)
-					// how do you decide it is an rbp offset? when there can be other registers mentioned?
 				case frame.RuleExpression:
 					fmt.Fprintf(writer, "\tRBP: exp")
 				default:
 					panic(fmt.Sprintf("Got rule %d for RBP, which wasn't expected", unwindRow.RBP.Rule))
+				}
+
+				switch unwindRow.RA.Rule {
+				case frame.RuleUndefined, frame.RuleUnknown:
+					// TODO(sylfrena): recheck this, afaiu, RA is always defined for arm64
+					// oooh, then we should have this condition for x86 maybe then
+					// add a check if this is in x86 or arm64 and print a debug log accordingly
+					fmt.Fprintf(writer, "\tRA: u")
+				case frame.RuleRegister:
+					RAReg := arm64RegisterToString(unwindRow.RA.Reg)
+					fmt.Fprintf(writer, "\tRA: $%s", RAReg)
+				case frame.RuleOffset:
+					// Note: This condition is also executed(with offset 0 -> c0) when it is the last frame for an FDE
+					// readelf shows ra as undefined here but clearly the offset is considered 0 here in arm64
+					// TODO(sylfrena): verify above
+					fmt.Fprintf(writer, "\tRA: c%-4d", unwindRow.RA.Offset)
+				case frame.RuleExpression:
+					fmt.Fprintf(writer, "\tRA: exp")
+				default:
+					panic(fmt.Sprintf("Got rule %d for RA, which wasn't expected", unwindRow.RA.Rule))
 				}
 
 				fmt.Fprintf(writer, "\n")
@@ -204,7 +228,7 @@ func BuildUnwindTable(fdes frame.FrameDescriptionEntries) UnwindTable {
 
 	for _, fde := range fdes {
 		frameContext := frame.ExecuteDwarfProgram(fde, nil)
-		for insCtx := frameContext.Next(); frameContext.HasNext(); insCtx = frameContext.Next() {
+		for insCtx := frameContext.Next(); frameContext.HasNext(); insCtx = frameContext.Next() { //why framecontext.hasnext two times?
 			table = append(table, *unwindTableRow(insCtx))
 		}
 	}
