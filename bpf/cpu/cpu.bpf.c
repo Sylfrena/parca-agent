@@ -55,8 +55,8 @@ _Static_assert(1 << MAX_BINARY_SEARCH_DEPTH >= MAX_UNWIND_TABLE_SIZE, "unwind ta
 // Special values.
 #define CFA_TYPE_END_OF_FDE_MARKER 4
 
-#define CFA_TYPE_RBP_ARM 1
-#define CFA_TYPE_RSP_ARM 2
+#define CFA_TYPE_FP_ARM 5
+#define CFA_TYPE_SP_ARM 6
 
 // Values for the unwind table's frame pointer type.
 #define RBP_TYPE_UNCHANGED 0
@@ -849,6 +849,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       break;
     }
 
+    // TODO(sylfrena): Behaviour for this case maybe different for arm64, ra can be undefinied more often there.
     if (found_rbp_type == RBP_TYPE_UNDEFINED_RETURN_ADDRESS) {
       LOG("[info] null return address, end of stack", unwind_state->ip);
       reached_bottom_of_stack = true;
@@ -888,7 +889,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     u64 previous_rsp = 0;
     if (found_cfa_type == CFA_TYPE_RBP) {
       previous_rsp = unwind_state->bp + found_cfa_offset;
-    } else if (found_cfa_type == CFA_TYPE_RSP) {
+    } else if (found_cfa_type == CFA_TYPE_RSP || found_cfa_type == CFA_TYPE_SP_ARM ) {
       previous_rsp = unwind_state->sp + found_cfa_offset;
     } else if (found_cfa_type == CFA_TYPE_EXPRESSION) {
       if (found_cfa_offset == DWARF_EXPRESSION_UNKNOWN) {
