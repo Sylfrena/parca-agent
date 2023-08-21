@@ -669,7 +669,7 @@ func (m *bpfMaps) generateCompactUnwindTable(fullExecutablePath string, mapping 
 	var ut unwind.CompactUnwindTable
 
 	// Fetch FDEs.
-	fdes, err := unwind.ReadFDEs(fullExecutablePath)
+	fdes, arch, err := unwind.ReadFDEs(fullExecutablePath)
 	if err != nil {
 		return ut, err
 	}
@@ -679,7 +679,7 @@ func (m *bpfMaps) generateCompactUnwindTable(fullExecutablePath string, mapping 
 	sort.Sort(fdes)
 
 	// Generate the compact unwind table.
-	ut, err = unwind.BuildCompactUnwindTable(fdes)
+	ut, err = unwind.BuildCompactUnwindTable(fdes, arch)
 	if err != nil {
 		return ut, err
 	}
