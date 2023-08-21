@@ -29,6 +29,7 @@ import (
 var (
 	ErrNoFDEsFound            = errors.New("no FDEs found")
 	ErrEhFrameSectionNotFound = errors.New("failed to find .eh_frame section")
+	ErrNoRegisterFound        = errors.New("failed to find register for architecture")
 )
 
 type UnwindTableBuilder struct {
@@ -39,7 +40,7 @@ func NewUnwindTableBuilder(logger log.Logger) *UnwindTableBuilder {
 	return &UnwindTableBuilder{logger: logger}
 }
 
-func x64RegisterToString(reg uint64) string {
+/*func x64RegisterToString(reg uint64) string {
 	// TODO(javierhonduco):
 	// - add source for this table.
 	// - add other architectures.
@@ -74,11 +75,38 @@ func arm64RegisterToString(reg uint64) string {
 	}
 
 	return arm64Regs[reg]
+}*/
+
+var x86_64Regs = []string{
+	"rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11",
+	"r12", "r13", "r14", "r15", "rip", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5",
+	"xmm6", "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
+	"st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7", "mm0", "mm1", "mm2", "mm3",
+	"mm4", "mm5", "mm6", "mm7", "rflags", "es", "cs", "ss", "ds", "fs", "gs",
+	"unused1", "unused2", "fs.base", "gs.base", "unused3", "unused4", "tr", "ldtr",
+	"mxcsr", "fcw", "fsw",
+}
+
+var arm64Regs = []string{
+	"x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+	"x12", "x13", "x14", "x15", "x16", "x17", "x18", "x18", "x19", "x20",
+	"x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30",
+	"sp", "pc", "cpsr",
+}
+
+func registerToString(reg uint64, arch elf.Machine) string {
+	if arch == elf.EM_X86_64 {
+		return x86_64Regs[reg]
+	} else if arch == elf.EM_AARCH64 {
+		return arm64Regs[reg]
+	}
+
+	return ErrNoRegisterFound.Error()
 }
 
 // PrintTable is a debugging helper that prints the unwinding table to the given io.Writer.
 func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact bool, pc *uint64) error {
-	fdes, err := ReadFDEs(path)
+	fdes, arch, err := ReadFDEs(path)
 	if err != nil {
 		return err
 	}
@@ -109,7 +137,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 			}
 
 			if compact {
-				compactRow, err := rowToCompactRow(unwindRow)
+				compactRow, err := rowToCompactRow(unwindRow, arch)
 				if err != nil {
 					return err
 				}
@@ -127,8 +155,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				//nolint:exhaustive
 				switch unwindRow.CFA.Rule {
 				case frame.RuleCFA:
-					//CFAReg := x64RegisterToString(unwindRow.CFA.Reg)
-					CFAReg := arm64RegisterToString(unwindRow.CFA.Reg)
+					CFAReg := registerToString(unwindRow.CFA.Reg, arch)
 					fmt.Fprintf(writer, "\tLoc: %x CFA: $%s=%-4d", unwindRow.Loc, CFAReg, unwindRow.CFA.Offset) // TODO(Sylfrena): correct
 				case frame.RuleExpression:
 					expressionID := ExpressionIdentifier(unwindRow.CFA.Expression)
@@ -149,7 +176,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				case frame.RuleRegister:
 					// TODO(sylfrena)
 					//RBPReg := x64RegisterToString(unwindRow.RBP.Reg)
-					RBPReg := arm64RegisterToString(unwindRow.RBP.Reg)
+					RBPReg := registerToString(unwindRow.RBP.Reg, arch)
 					fmt.Fprintf(writer, "\tRBP: $%s", RBPReg)
 				case frame.RuleOffset:
 					// Interesting we end up here and register is not assigned
@@ -168,7 +195,8 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 					// add a check if this is in x86 or arm64 and print a debug log accordingly
 					fmt.Fprintf(writer, "\tRA: u")
 				case frame.RuleRegister:
-					RAReg := arm64RegisterToString(unwindRow.RA.Reg)
+					//TODO(sylfrena): what if not aarch64? check
+					RAReg := registerToString(unwindRow.RA.Reg, arch)
 					fmt.Fprintf(writer, "\tRA: $%s", RAReg)
 				case frame.RuleOffset:
 					// Note: This condition is also executed(with offset 0 -> c0) when it is the last frame for an FDE
@@ -189,37 +217,39 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 	return nil
 }
 
-func ReadFDEs(path string) (frame.FrameDescriptionEntries, error) {
+func ReadFDEs(path string) (frame.FrameDescriptionEntries, elf.Machine, error) {
 	// TODO(kakkoyun): Migrate objectfile and pool.
 	obj, err := elf.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open elf: %w", err)
+		return nil, elf.EM_NONE, fmt.Errorf("failed to open elf: %w", err)
 	}
 	defer obj.Close()
 
+	arch := obj.Machine
+
 	sec := obj.Section(".eh_frame")
 	if sec == nil {
-		return nil, ErrEhFrameSectionNotFound
+		return nil, arch, ErrEhFrameSectionNotFound
 	}
 
 	// TODO: Consider using the debug_frame section as a fallback.
 	// TODO: Needs to support DWARF64 as well.
 	ehFrame, err := sec.Data()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read .eh_frame section: %w", err)
+		return nil, arch, fmt.Errorf("failed to read .eh_frame section: %w", err)
 	}
 
 	// TODO: Byte order of a DWARF section can be different.
 	fdes, err := frame.Parse(ehFrame, obj.ByteOrder, 0, pointerSize(obj.Machine), sec.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse frame data: %w", err)
+		return nil, arch, fmt.Errorf("failed to parse frame data: %w", err)
 	}
 
 	if len(fdes) == 0 {
-		return nil, ErrNoFDEsFound
+		return nil, arch, ErrNoFDEsFound
 	}
 
-	return fdes, nil
+	return fdes, arch, nil
 }
 
 func BuildUnwindTable(fdes frame.FrameDescriptionEntries) UnwindTable {
