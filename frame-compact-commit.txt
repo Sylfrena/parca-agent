@@ -1,0 +1,89 @@
+commit 08554b3bc6afe59cd120a9c
+`dist/eh-frame --compact --executable="../testdata/out/basic-cpp-no-fp-with-debuginfo"   >   frame-compact-commit.txt`
+
+=> Function start: 600, Function end: 634
+ruley unknown
+	pc: 600 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley undefined
+	pc: 604 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 650, Function end: 680
+ruley unknown
+	pc: 650 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 680, Function end: 6bc
+ruley unknown
+	pc: 680 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 6c0, Function end: 708
+ruley unknown
+	pc: 6c0 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+
+ruley offset
+	pc: 6c4 cfa_type: 5  rbp_type: 5  cfa_offset: 32   rbp_offset: -32 lr_offset: -24 
+
+ruley offset
+	pc: 6cc cfa_type: 5  rbp_type: 5  cfa_offset: 32   rbp_offset: -32 lr_offset: -24 
+ruley offset
+	pc: 704 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 710, Function end: 714
+ruley unknown
+	pc: 710 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 714, Function end: 744
+ruley unknown
+	pc: 714 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley unknown
+	pc: 718 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: 0   
+ruley unknown
+	pc: 740 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 744, Function end: 774
+ruley unknown
+	pc: 744 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley unknown
+	pc: 748 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: 0   
+ruley unknown
+	pc: 770 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 774, Function end: 784
+ruley unknown
+	pc: 774 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 778 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 
+ruley offset
+	pc: 780 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 784, Function end: 794
+ruley unknown
+	pc: 784 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 788 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 
+ruley offset
+	pc: 790 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 794, Function end: 7a4
+ruley unknown
+	pc: 794 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 798 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 
+ruley offset
+	pc: 7a0 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 7a4, Function end: 7b4
+ruley unknown
+	pc: 7a4 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 7a8 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 
+ruley offset
+	pc: 7b0 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 7b4, Function end: 7c4
+ruley unknown
+	pc: 7b4 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 7b8 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 
+ruley offset
+	pc: 7c0 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 7c4, Function end: 7d4
+ruley unknown
+	pc: 7c4 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 7c8 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 
+ruley offset
+	pc: 7d0 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+=> Function start: 7d4, Function end: 7e8
+ruley unknown
+	pc: 7d4 cfa_type: 5  rbp_type: 0  cfa_offset: 0    rbp_offset: 0   lr_offset: 0   
+ruley offset
+	pc: 7d8 cfa_type: 5  rbp_type: 0  cfa_offset: 16   rbp_offset: 0   lr_offset: -16 

@@ -106,7 +106,7 @@ const (
 			s16 rbp_offset;
 		} stack_unwind_row_t;
 	*/
-	compactUnwindRowSizeBytes                = 14
+	compactUnwindRowSizeBytes                = 16
 	minRoundsBeforeRedoingUnwindInfo         = 5
 	minRoundsBeforeRedoingProcessInformation = 5
 	maxCachedProcesses                       = 10_0000
@@ -702,6 +702,8 @@ func (m *bpfMaps) generateCompactUnwindTable(fullExecutablePath string, mapping 
 func (m *bpfMaps) writeUnwindTableRow(rowSlice *profiler.EfficientBuffer, row unwind.CompactUnwindTableRow) {
 	// .pc
 	rowSlice.PutUint64(row.Pc())
+	// .link register offset(for arm64) //TODO(sylfrena): add if clause for X86
+	rowSlice.PutInt16(row.LrOffset())
 	// .cfa_type
 	rowSlice.PutUint8(row.CfaType())
 	// .rbp_type

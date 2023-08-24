@@ -57,6 +57,7 @@ _Static_assert(1 << MAX_BINARY_SEARCH_DEPTH >= MAX_UNWIND_TABLE_SIZE, "unwind ta
 
 #define CFA_TYPE_FP_ARM 5
 #define CFA_TYPE_SP_ARM 6
+#define CFA_TYPE_LR_ARM 7
 
 // Values for the unwind table's frame pointer type.
 #define RBP_TYPE_UNCHANGED 0
@@ -203,12 +204,13 @@ typedef struct {
 // A row in the stack unwinding table for x86_64.
 typedef struct __attribute__((packed)) {
   u64 pc;
+  s16 lr_offset;
   u8 cfa_type;
   u8 rbp_type;
   s16 cfa_offset;
   s16 rbp_offset;
 } stack_unwind_row_t;
-_Static_assert(sizeof(stack_unwind_row_t) == 14, "unwind row has the expected size");
+_Static_assert(sizeof(stack_unwind_row_t) == 16, "unwind row has the expected size");
 
 // Unwinding table representation.
 typedef struct {
@@ -793,7 +795,6 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         unwind_state->stack.len++;
         bump_unwind_success_jit_frame();
       }
-
       continue;
     } else if (unwind_table_result == FIND_UNWIND_SPECIAL) {
       LOG("special section, stopping");
@@ -836,6 +837,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
 
     u64 found_pc = unwind_table->rows[table_idx].pc;
+    s16 found_lr_offset = unwind_table->rows[table_idx].lr_offset;
     u8 found_cfa_type = unwind_table->rows[table_idx].cfa_type;
     u8 found_rbp_type = unwind_table->rows[table_idx].rbp_type;
     s16 found_cfa_offset = unwind_table->rows[table_idx].cfa_offset;
@@ -880,6 +882,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
     unwind_state->unwinding_jit = false;
 
+    // we ideally want RBP_TYPE_OFFSET here
     if (found_rbp_type == RBP_TYPE_REGISTER || found_rbp_type == RBP_TYPE_EXPRESSION) {
       LOG("\t[error] frame pointer is %d (register or exp), bailing out", found_rbp_type);
       bump_unwind_error_unsupported_frame_pointer_action();
@@ -887,7 +890,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
 
     u64 previous_rsp = 0;
-    if (found_cfa_type == CFA_TYPE_RBP) {
+    if (found_cfa_type == CFA_TYPE_RBP || found_cfa_type == CFA_TYPE_FP_ARM) {
       previous_rsp = unwind_state->bp + found_cfa_offset;
     } else if (found_cfa_type == CFA_TYPE_RSP || found_cfa_type == CFA_TYPE_SP_ARM ) {
       previous_rsp = unwind_state->sp + found_cfa_offset;
@@ -918,6 +921,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       //return 1;
     }
 
+    
     // TODO(javierhonduco): A possible check could be to see whether this value
     // is within the stack. This check could be quite brittle though, so if we
     // add it, it would be best to add it only during development.
@@ -927,10 +931,15 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       return 1;
     }
 
+    
+    // TODO(sylfrena): Use LR here to get return address
+   // u64 previous_saved_lr_ra = previous_rsp + found_lr_offset;
+
+
     // HACK(javierhonduco): This is an architectural shortcut we can take. As we
     // only support x86_64 at the minute, we can assume that the return address
     // is *always* 8 bytes ahead of the previous stack pointer.
-    u64 previous_rip_addr = previous_rsp - 8; // the saved return address is 8 bytes ahead of the previous stack pointer
+    u64 previous_rip_addr =  previous_rsp + found_lr_offset;  // previous_rsp - 8; // the saved return address is 8 bytes ahead of the previous stack pointer
     u64 previous_rip = 0;
     int err = bpf_probe_read_user(&previous_rip, 8, (void *)(previous_rip_addr));
 
