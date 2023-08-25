@@ -26,7 +26,7 @@ func TestBuildUnwindTable(t *testing.T) {
 	fdes, _, err := ReadFDEs("../../../testdata/out/basic-cpp")
 	require.NoError(t, err)
 
-	unwindTable := BuildUnwindTable(fdes)
+	unwindTable := BuildUnwindTable(fdes, arch) // TODO(sylfrena): insert native arch here or something
 	require.Equal(t, 38, len(unwindTable))
 
 	require.Equal(t, uint64(0x401020), unwindTable[0].Loc)

@@ -3,6 +3,7 @@ package frame
 
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/binary"
 	"fmt"
 
@@ -69,6 +70,7 @@ type InstructionContext struct {
 	RetAddrReg    uint64
 	codeAlignment uint64
 	dataAlignment int64
+	Arch          elf.Machine //TODO(sylfrena): maybe this is already present in another field or makes sense as part of another field
 }
 
 func (instructionContext *InstructionContext) Loc() uint64 {
@@ -274,7 +276,7 @@ func executeCIEInstructions(cie *CommonInformationEntry, context *Context) *Cont
 }
 
 // ExecuteDwarfProgram evaluates the unwind opcodes for a function.
-func ExecuteDwarfProgram(fde *FrameDescriptionEntry, context *Context) *InstructionContextIterator {
+func ExecuteDwarfProgram(fde *FrameDescriptionEntry, context *Context, arch elf.Machine) *InstructionContextIterator {
 	ctx := executeCIEInstructions(fde.CIE, context)
 	ctx.order = fde.order
 	frame := ctx.currentInstruction()
@@ -409,11 +411,11 @@ func lookupFunc(instruction byte, ctx *Context) instruction {
 // TODO(sylfrena): add for arm64
 func setRule(reg uint64, frame *InstructionContext, rule DWRule) {
 	switch reg {
-	case Arm64StackPointer: //case X86_64StackPointer:
+	case Arm64StackPointer, X86_64StackPointer:
 		frame.Regs.StackPointer = rule
-	case Arm64FramePointer: //X86_64FramePointer:
+	case Arm64FramePointer, X86_64FramePointer:
 		frame.Regs.FramePointer = rule
-	case Arm64LinkRegister: //frame.RetAddrReg: //should I just let it remain? // yes reuse it, but write a comment
+	case Arm64LinkRegister, frame.RetAddrReg: //should I just let it remain? // yes reuse it, but write a comment
 		frame.Regs.SavedReturn = rule
 	}
 }
@@ -421,13 +423,13 @@ func setRule(reg uint64, frame *InstructionContext, rule DWRule) {
 func restoreRule(reg uint64, frame *InstructionContext) {
 	switch reg {
 	// TODO(sylfrena): add for arm64
-	case Arm64StackPointer: //case X86_64StackPointer:
+	case Arm64StackPointer, X86_64StackPointer:
 		if frame.initialRegs.StackPointer.Rule == RuleUnknown {
 			frame.Regs.StackPointer = DWRule{Rule: RuleUndefined}
 		} else {
 			frame.Regs.StackPointer = DWRule{Offset: frame.initialRegs.StackPointer.Offset, Rule: RuleOffset}
 		}
-	case Arm64FramePointer: //X86_64FramePointer: // arm64
+	case Arm64FramePointer, X86_64FramePointer:
 		if frame.initialRegs.FramePointer.Rule == RuleUnknown {
 			frame.Regs.FramePointer = DWRule{Rule: RuleUndefined}
 		} else {

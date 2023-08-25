@@ -102,7 +102,7 @@ func (t CompactUnwindTable) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
 func BuildCompactUnwindTable(fdes frame.FrameDescriptionEntries, arch elf.Machine) (CompactUnwindTable, error) {
 	table := make(CompactUnwindTable, 0, 4*len(fdes)) // heuristic: we expect each function to have ~4 unwind entries.
 	for _, fde := range fdes {
-		frameContext := frame.ExecuteDwarfProgram(fde, nil)
+		frameContext := frame.ExecuteDwarfProgram(fde, nil, arch)
 		for insCtx := frameContext.Next(); frameContext.HasNext(); insCtx = frameContext.Next() {
 			row := unwindTableRow(insCtx)
 			compactRow, err := rowToCompactRow(row, arch)
@@ -155,7 +155,8 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 	// Frame pointer.
 	switch row.RBP.Rule {
 	case frame.RuleOffset:
-		rbpType = uint8(fpRuleOffset) //uint8(rbpRuleOffset) // TODO(sylfrena): works only for arm64, fix for x86 also || Reuse type
+		//fmt.Println("we enter?")
+		rbpType = uint8(rbpRuleOffset) //uint8(rbpRuleOffset) // TODO(sylfrena): works only for arm64, fix for x86 also || Reuse type
 		rbpOffset = int16(row.RBP.Offset)
 		fmt.Println()
 		// curious that the following condition doesn't satisfy. it should.
@@ -169,9 +170,12 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 		 */
 	case frame.RuleRegister:
 		rbpType = uint8(rbpRuleRegister)
+		fmt.Println("blaweeeh")
 	case frame.RuleExpression:
 		rbpType = uint8(rbpTypeExpression)
+		fmt.Println("blah")
 	case frame.RuleUndefined:
+		fmt.Println("blahblah")
 	case frame.RuleUnknown:
 	case frame.RuleSameVal:
 	case frame.RuleValOffset:
@@ -183,7 +187,8 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 	switch row.RA.Rule {
 	case frame.RuleOffset:
 		if arch == elf.EM_X86_64 {
-			rbpType = uint8(rbpTypeUndefinedReturnAddress)
+			//	fmt.Println("entryyy")
+			// maybe just set RA rule to undefined for x86
 			lrOffset = 0
 		} else if arch == elf.EM_AARCH64 {
 			fmt.Println("ruley offset")
@@ -197,6 +202,9 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 		//fmt.Println("ruley unknown")
 	case frame.RuleUndefined:
 		//fmt.Println("ruley undefined")
+		if arch == elf.EM_X86_64 {
+			rbpType = uint8(rbpTypeUndefinedReturnAddress)
+		}
 	}
 
 	return CompactUnwindTableRow{
