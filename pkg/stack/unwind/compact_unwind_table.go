@@ -155,23 +155,28 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 	// Frame pointer.
 	switch row.RBP.Rule {
 	case frame.RuleOffset:
-		rbpType = uint8(fpRuleOffset) //uint8(rbpRuleOffset) // TODO(sylfrena): works only for arm64, fix for x86 also || Reuse type
+		rbpType = uint8(rbpRuleOffset) //TODO(sylfrena): works only for arm64, fix for x86 also || Reuse type
+		if arch == elf.EM_AARCH64 {
+			rbpType = uint8(fpRuleOffset) // Use one type here
+		}
 		rbpOffset = int16(row.RBP.Offset)
-		fmt.Println()
 		// curious that the following condition doesn't satisfy. it should.
 		// On further investigation, it doesn't because only Offset Rule is applied, and register value is x0, not x29
 		// Delete this part later
 		if row.RBP.Reg == frame.Arm64FramePointer && arch == elf.EM_AARCH64 {
-			fmt.Println("ruley fp offset")
+			//fmt.Println("ruley fp offset")
 			rbpType = uint8(fpRuleOffset)
 		}
 		/* Ideally this whole thing should work with just rbpType = uint8(reusedrbp/fpRuleOffset)
 		 */
 	case frame.RuleRegister:
 		rbpType = uint8(rbpRuleRegister)
+		fmt.Println("blaweeeh")
 	case frame.RuleExpression:
 		rbpType = uint8(rbpTypeExpression)
+		fmt.Println("blah")
 	case frame.RuleUndefined:
+		fmt.Println("blahblah")
 	case frame.RuleUnknown:
 	case frame.RuleSameVal:
 	case frame.RuleValOffset:
@@ -183,7 +188,8 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 	switch row.RA.Rule {
 	case frame.RuleOffset:
 		if arch == elf.EM_X86_64 {
-			rbpType = uint8(rbpTypeUndefinedReturnAddress)
+			// fmt.Println("entryyy")
+			// maybe just set RA rule to undefined for x86
 			lrOffset = 0
 		} else if arch == elf.EM_AARCH64 {
 			fmt.Println("ruley offset")
@@ -197,6 +203,10 @@ func rowToCompactRow(row *UnwindTableRow, arch elf.Machine) (CompactUnwindTableR
 		//fmt.Println("ruley unknown")
 	case frame.RuleUndefined:
 		//fmt.Println("ruley undefined")
+		// TODO(sylfrena: check for correctness)
+		if arch == elf.EM_X86_64 {
+			rbpType = uint8(rbpTypeUndefinedReturnAddress)
+		}
 	}
 
 	return CompactUnwindTableRow{

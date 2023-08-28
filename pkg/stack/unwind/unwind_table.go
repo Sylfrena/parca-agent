@@ -149,7 +149,10 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				fmt.Fprintf(writer, "rbp_type: %-2d ", compactRow.RbpType())
 				fmt.Fprintf(writer, "cfa_offset: %-4d ", compactRow.CfaOffset())
 				fmt.Fprintf(writer, "rbp_offset: %-4d", compactRow.RbpOffset())
-				fmt.Fprintf(writer, "lr_offset: %-4d", compactRow.LrOffset())
+				if arch == elf.EM_AARCH64 {
+					fmt.Fprintf(writer, "lr_offset: %-4d", compactRow.LrOffset())
+				}
+
 				fmt.Fprintf(writer, "\n")
 			} else {
 				//nolint:exhaustive
@@ -172,7 +175,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 				//nolint:exhaustive
 				switch unwindRow.RBP.Rule {
 				case frame.RuleUndefined, frame.RuleUnknown:
-					fmt.Fprintf(writer, "\tRBP: u")
+					fmt.Fprintf(writer, "\tRBPunk: u")
 				case frame.RuleRegister:
 					// TODO(sylfrena)
 					//RBPReg := x64RegisterToString(unwindRow.RBP.Reg)
@@ -183,7 +186,7 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 					// TODO(sylfrena): verify if this is expected
 					fmt.Fprintf(writer, "\tRBP: c%-4d", unwindRow.RBP.Offset)
 				case frame.RuleExpression:
-					fmt.Fprintf(writer, "\tRBP: exp")
+					fmt.Fprintf(writer, "\tRBPheadacheexp: exp")
 				default:
 					panic(fmt.Sprintf("Got rule %d for RBP, which wasn't expected", unwindRow.RBP.Rule))
 				}
@@ -193,18 +196,26 @@ func (ptb *UnwindTableBuilder) PrintTable(writer io.Writer, path string, compact
 					// TODO(sylfrena): recheck this, afaiu, RA is always defined for arm64
 					// oooh, then we should have this condition for x86 maybe then
 					// add a check if this is in x86 or arm64 and print a debug log accordingly
-					fmt.Fprintf(writer, "\tRA: u")
+					if arch == elf.EM_AARCH64 {
+						fmt.Fprintf(writer, "\tRA: u")
+					}
 				case frame.RuleRegister:
 					//TODO(sylfrena): what if not aarch64? check
 					RAReg := registerToString(unwindRow.RA.Reg, arch)
-					fmt.Fprintf(writer, "\tRA: $%s", RAReg)
+					if arch == elf.EM_AARCH64 {
+						fmt.Fprintf(writer, "\tRA: $%s", RAReg)
+					}
 				case frame.RuleOffset:
 					// Note: This condition is also executed(with offset 0 -> c0) when it is the last frame for an FDE
 					// readelf shows ra as undefined here but clearly the offset is considered 0 here in arm64
 					// TODO(sylfrena): verify above
-					fmt.Fprintf(writer, "\tRA: c%-4d", unwindRow.RA.Offset)
+					if arch == elf.EM_AARCH64 {
+						fmt.Fprintf(writer, "\tRA: c%-4d", unwindRow.RA.Offset)
+					}
 				case frame.RuleExpression:
-					fmt.Fprintf(writer, "\tRA: exp")
+					if arch == elf.EM_AARCH64 {
+						fmt.Fprintf(writer, "\tRA: exp")
+					}
 				default:
 					panic(fmt.Sprintf("Got rule %d for RA, which wasn't expected", unwindRow.RA.Rule))
 				}
