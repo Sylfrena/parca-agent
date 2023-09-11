@@ -185,12 +185,13 @@ typedef struct {
 // A row in the stack unwinding table for x86_64.
 typedef struct __attribute__((packed)) {
   u64 pc;
+  s16 lr_offset;
   u8 cfa_type;
   u8 rbp_type;
   s16 cfa_offset;
   s16 rbp_offset;
 } stack_unwind_row_t;
-_Static_assert(sizeof(stack_unwind_row_t) == 14, "unwind row has the expected size");
+_Static_assert(sizeof(stack_unwind_row_t) == 16, "unwind row has the expected size");
 
 // Unwinding table representation.
 typedef struct {
@@ -639,7 +640,7 @@ static __always_inline void add_stack(struct bpf_perf_event_data *ctx, u64 pid_t
   switch (unwind_state->interpreter_type) {
   case INTERPRETER_TYPE_UNDEFINED:
     // Most programs aren't interpreters, this can be rather verbose.
-    LOG("[debug] PID: %d not an interpreter", user_pid);
+    // LOG("[debug] PID: %d not an interpreter", user_pid);
     aggregate_stacks();
     break;
   case INTERPRETER_TYPE_RUBY:
@@ -801,7 +802,8 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     u64 right = chunk_info->high_index;
     LOG("========== left %llu right %llu", left, right);
 
-    u64 table_idx = find_offset_for_pc(unwind_table, unwind_state->ip - offset, left, right);
+    u64 table_idx;
+    table_idx = find_offset_for_pc(unwind_table, unwind_state->ip - offset, left, right);
 
     if (table_idx == BINARY_SEARCH_DEFAULT || table_idx == BINARY_SEARCH_SHOULD_NEVER_HAPPEN || table_idx == BINARY_SEARCH_EXHAUSTED_ITERATIONS) {
       LOG("[error] binary search failed with %llx", table_idx);
@@ -819,11 +821,12 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
 
     u64 found_pc = unwind_table->rows[table_idx].pc;
+    s16 found_lr_offset = unwind_table->rows[table_idx].lr_offset;
     u8 found_cfa_type = unwind_table->rows[table_idx].cfa_type;
     u8 found_rbp_type = unwind_table->rows[table_idx].rbp_type;
     s16 found_cfa_offset = unwind_table->rows[table_idx].cfa_offset;
     s16 found_rbp_offset = unwind_table->rows[table_idx].rbp_offset;
-    LOG("\tcfa type: %d, offset: %d (row pc: %llx)", found_cfa_type, found_cfa_offset, found_pc);
+    LOG("\tcfa type: %d, offset: %d (row pc: %llx), lr offset:%d", found_cfa_type, found_cfa_offset, found_pc, found_lr_offset);
 
     if (found_cfa_type == CFA_TYPE_END_OF_FDE_MARKER) {
       LOG("[info] PC %llx not contained in the unwind info, found marker", unwind_state->ip);
@@ -832,6 +835,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       break;
     }
 
+    // TODO(sylfrena): Behaviour for this case maybe different for arm64, ra can be undefinied more often there.
     if (found_rbp_type == RBP_TYPE_UNDEFINED_RETURN_ADDRESS) {
       LOG("[info] null return address, end of stack", unwind_state->ip);
       reached_bottom_of_stack = true;
@@ -862,6 +866,8 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
     unwind_state->unwinding_jit = false;
 
+    // we ideally want RBP_TYPE_OFFSET here for DWARF unwinding, rbp_type_register or rbp_type_expression
+    // probably mean fp is present.
     if (found_rbp_type == RBP_TYPE_REGISTER || found_rbp_type == RBP_TYPE_EXPRESSION) {
       LOG("\t[error] frame pointer is %d (register or exp), bailing out", found_rbp_type);
       bump_unwind_error_unsupported_frame_pointer_action();
@@ -875,7 +881,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       previous_rsp = unwind_state->sp + found_cfa_offset;
     } else if (found_cfa_type == CFA_TYPE_EXPRESSION) {
       if (found_cfa_offset == DWARF_EXPRESSION_UNKNOWN) {
-        LOG("[unsup] CFA is an unsupported expression, bailing out");
+        LOG("[unsup] blahhh CFA is an unsupported expression, bailing out");
         bump_unwind_error_unsupported_expression();
         return 1;
       }
@@ -894,6 +900,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         return 1;
       }
       previous_rsp = unwind_state->sp + 8 + ((((unwind_state->ip & 15) >= threshold)) << 3);
+
     } else {
       LOG("\t[unsup] register %d not valid (expected $rbp or $rsp)", found_cfa_type);
       bump_unwind_error_unsupported_cfa_register();
@@ -909,14 +916,46 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       return 1;
     }
 
+    // TODO(sylfrena): Use LR here to get return address
+    // u64 previous_saved_lr_ra = previous_rsp + found_lr_offset;
+
     // HACK(javierhonduco): This is an architectural shortcut we can take. As we
     // only support x86_64 at the minute, we can assume that the return address
     // is *always* 8 bytes ahead of the previous stack pointer.
-    u64 previous_rip_addr = previous_rsp - 8; // the saved return address is 8 bytes ahead of the previous stack pointer
+
+    // if  (x86) {//previous_rsp - 8; // the saved return address is 8 bytes ahead of the previous stack pointer}
+    // if (found_lr_offset == 0 && unwind_state->stack.len == 0) {
+    //   found_lr_offset = -16;
+    // }
+
     u64 previous_rip = 0;
-    int err = bpf_probe_read_user(&previous_rip, 8, (void *)(previous_rip_addr));
+
+    u64 previous_rip_addr;
+
+    //if (found_lr_offset == 0) {
+    //  //previous_rip = PT_REGS_RET(&ctx->regs);
+    //  LOG("\tlr rip: %llx", PT_REGS_RET(&ctx->regs));
+    //} else {
+
+      previous_rip_addr = previous_rsp + found_lr_offset;
+      // read link register
+      //if (unwind_state->stack.len == 1) {
+      //  LOG("\tlr rip: %llx", PT_REGS_RET(&ctx->regs));
+        //LOG("\tFIRSTY rippaddr: %llx", previous_rip_addr);
+      //found_lr_offset = -8;
+      //  previous_rip_addr = previous_rsp;
+      //}
+      LOG("\tprevious rippaddr: %llx", previous_rip_addr);
+
+      int err = bpf_probe_read_user(&previous_rip, 8, (void *)(previous_rip_addr));
+      if (unwind_state->stack.len == 1) {
+        previous_rip = PT_REGS_RET(&ctx->regs);
+      }
+      LOG("\tprevious ip after bpf read: %llx", previous_rip);
+    //}
 
     if (previous_rip == 0) {
+      LOG("[debug] previous_rsp should not be zero.");
       int user_pid = pid_tgid;
       process_info_t *proc_info = bpf_map_lookup_elem(&process_info, &user_pid);
       if (proc_info == NULL) {
@@ -958,6 +997,10 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     LOG("\tprevious sp: %llx", previous_rsp);
     // Set rsp and rip registers
     unwind_state->ip = previous_rip;
+    if (unwind_state->stack.len == 0 || unwind_state->stack.len == 1) {
+      LOG("\tprevious ip after: %llx", unwind_state->ip);
+    }
+
     unwind_state->sp = previous_rsp;
     // Set rbp
     LOG("\tprevious bp: %llx", previous_rbp);

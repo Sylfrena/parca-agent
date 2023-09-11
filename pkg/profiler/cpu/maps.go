@@ -118,13 +118,14 @@ const (
 	/*
 		typedef struct __attribute__((packed)) {
 			u64 pc;
+			s16 lr_offset;
 			u8 cfa_type;
 			u8 rbp_type;
 			s16 cfa_offset;
 			s16 rbp_offset;
 		} stack_unwind_row_t;
 	*/
-	compactUnwindRowSizeBytes                = 14
+	compactUnwindRowSizeBytes                = 16
 	minRoundsBeforeRedoingUnwindInfo         = 5
 	minRoundsBeforeRedoingProcessInformation = 5
 	maxCachedProcesses                       = 10_0000
@@ -1283,6 +1284,8 @@ func (m *bpfMaps) addUnwindTableForProcess(pid int, interp *runtime.Interpreter,
 func (m *bpfMaps) writeUnwindTableRow(rowSlice *profiler.EfficientBuffer, row unwind.CompactUnwindTableRow) {
 	// .pc
 	rowSlice.PutUint64(row.Pc())
+	// .lr_offset
+	rowSlice.PutInt16(row.LrOffset())
 	// .cfa_type
 	rowSlice.PutUint8(row.CfaType())
 	// .rbp_type

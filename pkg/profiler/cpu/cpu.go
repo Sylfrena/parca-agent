@@ -470,6 +470,7 @@ func (p *CPU) prefetchProcessInfo(ctx context.Context, pid int) {
 
 	// TODO: This should only be called once.
 	if procInfo.Interpreter != nil {
+		level.Debug(p.logger).Log("msg", "prefetchy interpreter procinfo", "pid", pid, "err", err)
 		err := p.bpfMaps.addInterpreter(pid, *procInfo.Interpreter)
 		if err != nil {
 			// Must never fail.
@@ -900,7 +901,7 @@ func (p *CPU) watchProcesses(ctx context.Context, pfs procfs.FS, matchers []*reg
 				}
 				comm, err := thread.Comm()
 				if err != nil {
-					level.Debug(p.logger).Log("msg", "failed to read process name", "pid", thread.PID, "err", err)
+					//level.Debug(p.logger).Log("msg", "failed to read process name", "pid", thread.PID, "err", err)
 					continue
 				}
 
