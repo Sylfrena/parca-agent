@@ -930,14 +930,14 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
 
     u64 previous_rip = 0;
 
-    u64 previous_rip_addr;
+    //u64 previous_rip_addr;
 
     //if (found_lr_offset == 0) {
     //  //previous_rip = PT_REGS_RET(&ctx->regs);
     //  LOG("\tlr rip: %llx", PT_REGS_RET(&ctx->regs));
     //} else {
 
-      previous_rip_addr = previous_rsp + found_lr_offset;
+      
       // read link register
       //if (unwind_state->stack.len == 1) {
       //  LOG("\tlr rip: %llx", PT_REGS_RET(&ctx->regs));
@@ -945,11 +945,17 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       //found_lr_offset = -8;
       //  previous_rip_addr = previous_rsp;
       //}
-      LOG("\tprevious rippaddr: %llx", previous_rip_addr);
+      //LOG("\tprevious rippaddr: %llx", previous_rip_addr);
 
-      int err = bpf_probe_read_user(&previous_rip, 8, (void *)(previous_rip_addr));
-      if (unwind_state->stack.len == 1) {
+  
+      if (found_lr_offset == 0) {
         previous_rip = PT_REGS_RET(&ctx->regs);
+      } else {
+        u64 previous_rip_addr = previous_rsp + found_lr_offset;
+        int err = bpf_probe_read_user(&previous_rip, 8, (void *)(previous_rip_addr));
+        if (err < 0) {
+          bpf_printk("\n FAILED TO READ PREVIOUS RIP: error: %d", err);
+        }
       }
       LOG("\tprevious ip after bpf read: %llx", previous_rip);
     //}
@@ -971,7 +977,7 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
         return 1;
       }
 
-      LOG("[error] previous_rip should not be zero. This can mean that the read failed, ret=%d while reading @ %llx.", err, previous_rip_addr);
+      //LOG("[error] previous_rip should not be zero. This can mean that the read failed, ret=%d while reading @ %llx.", err, previous_rip_addr);
       bump_unwind_error_catchall();
       return 1;
     }
@@ -993,7 +999,8 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
       }
     }
 
-    LOG("\tprevious ip: %llx (@ %llx)", previous_rip, previous_rip_addr);
+    //LOG("\tprevious ip: %llx (@ %llx)", previous_rip, previous_rip_addr);
+    LOG("\tprevious ip: %llx", previous_rip);
     LOG("\tprevious sp: %llx", previous_rsp);
     // Set rsp and rip registers
     unwind_state->ip = previous_rip;
