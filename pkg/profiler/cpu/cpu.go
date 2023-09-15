@@ -303,7 +303,7 @@ func loadBPFModules(logger log.Logger, reg prometheus.Registerer, memlockRlimit 
 		}
 
 		// Maps must be initialized before loading the BPF code.
-		bpfMaps, err := initializeMaps(logger, reg, binary.LittleEndian, modules)
+		bpfMaps, err := initializeMaps(logger, reg, binary.LittleEndian, runtime.GOARCH, modules)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to initialize eBPF maps: %w", err)
 		}
@@ -470,7 +470,6 @@ func (p *CPU) prefetchProcessInfo(ctx context.Context, pid int) {
 
 	// TODO: This should only be called once.
 	if procInfo.Interpreter != nil {
-		level.Debug(p.logger).Log("msg", "prefetchy interpreter procinfo", "pid", pid, "err", err)
 		err := p.bpfMaps.addInterpreter(pid, *procInfo.Interpreter)
 		if err != nil {
 			// Must never fail.
@@ -901,7 +900,7 @@ func (p *CPU) watchProcesses(ctx context.Context, pfs procfs.FS, matchers []*reg
 				}
 				comm, err := thread.Comm()
 				if err != nil {
-					//level.Debug(p.logger).Log("msg", "failed to read process name", "pid", thread.PID, "err", err)
+					level.Debug(p.logger).Log("msg", "failed to read process name", "pid", thread.PID, "err", err)
 					continue
 				}
 
