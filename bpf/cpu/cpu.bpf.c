@@ -21,10 +21,20 @@
 #define RUBY_UNWINDER_PROGRAM_ID 1
 #define PYTHON_UNWINDER_PROGRAM_ID 2
 
-// Number of frames to walk per tail call iteration.
-#define MAX_STACK_DEPTH_PER_PROGRAM 9
-// Number of BPF tail calls that will be attempted.
-#define MAX_TAIL_CALLS 15
+#if __TARGET_ARCH_arm64
+  // Number of frames to walk per tail call iteration.
+  #define MAX_STACK_DEPTH_PER_PROGRAM 8
+  // Number of BPF tail calls that will be attempted.
+  #define MAX_TAIL_CALLS 16
+#endif
+
+#if __TARGET_ARCH_x86
+  // Number of frames to walk per tail call iteration.
+  #define MAX_STACK_DEPTH_PER_PROGRAM 9
+  // Number of BPF tail calls that will be attempted.
+  #define MAX_TAIL_CALLS 15
+#endif
+
 // Maximum number of frames.
 #define MAX_STACK_DEPTH 127
 _Static_assert(MAX_TAIL_CALLS *MAX_STACK_DEPTH_PER_PROGRAM >= MAX_STACK_DEPTH, "enough iterations to traverse the whole stack");
@@ -182,28 +192,21 @@ typedef struct {
   mapping_t mappings[MAX_MAPPINGS_PER_PROCESS];
 } process_info_t;
 
- #if __TARGET_ARCH_arm64
    // A row in the stack unwinding table for Arm64.
   typedef struct __attribute__((packed)) {
     u64 pc;
-    s16 lr_offset;
+    #if __TARGET_ARCH_arm64 
+      s16 lr_offset;
+    #endif
     u8 cfa_type;
     u8 rbp_type;
     s16 cfa_offset;
     s16 rbp_offset;
   } stack_unwind_row_t;
-  _Static_assert(sizeof(stack_unwind_row_t) == 16, "unwind row has the expected size");
- #endif
-
- #if __TARGET_ARCH_x86
-  // A row in the stack unwinding table for x86_64.
-  typedef struct __attribute__((packed)) {
-    u64 pc;
-    u8 cfa_type;
-    u8 rbp_type;
-    s16 cfa_offset;
-    s16 rbp_offset;
-  } stack_unwind_row_t;
+  #if __TARGET_ARCH_arm64
+    _Static_assert(sizeof(stack_unwind_row_t) == 16, "unwind row has the expected size");
+  #endif
+  #if __TARGET_ARCH_x86
   _Static_assert(sizeof(stack_unwind_row_t) == 14, "unwind row has the expected size");
  #endif
 
@@ -654,7 +657,7 @@ static __always_inline void add_stack(struct bpf_perf_event_data *ctx, u64 pid_t
   switch (unwind_state->interpreter_type) {
   case INTERPRETER_TYPE_UNDEFINED:
     // Most programs aren't interpreters, this can be rather verbose.
-    // LOG("[debug] PID: %d not an interpreter", user_pid);
+    LOG("[debug] PID: %d not an interpreter", user_pid);
     aggregate_stacks();
     break;
   case INTERPRETER_TYPE_RUBY:
@@ -883,8 +886,6 @@ int walk_user_stacktrace_impl(struct bpf_perf_event_data *ctx) {
     }
     unwind_state->unwinding_jit = false;
 
-    // We ideally want RBP_TYPE_OFFSET here for DWARF unwinding, RBP_TYPE_REGISTER or RBP_TYPE_EXPRESSION
-    // probably mean frame pointer is present.
     if (found_rbp_type == RBP_TYPE_REGISTER || found_rbp_type == RBP_TYPE_EXPRESSION) {
       LOG("\t[error] frame pointer is %d (register or exp), bailing out", found_rbp_type);
       bump_unwind_error_unsupported_frame_pointer_action();

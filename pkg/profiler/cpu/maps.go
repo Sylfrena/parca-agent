@@ -300,16 +300,18 @@ const (
 	pyperfModule
 )
 
-func initializeMaps(logger log.Logger, reg prometheus.Registerer, byteOrder binary.ByteOrder, arch string, modules map[moduleType]*bpf.Module) (*bpfMaps, error) {
+func initializeMaps(logger log.Logger, reg prometheus.Registerer, byteOrder binary.ByteOrder, arch elf.Machine, modules map[moduleType]*bpf.Module) (*bpfMaps, error) {
 	if modules[nativeModule] == nil {
 		return nil, fmt.Errorf("nil nativeModule")
 	}
 
 	var compactUnwindRowSizeBytes int
-	if arch == "arm64" {
+	if arch == elf.EM_AARCH64 {
 		compactUnwindRowSizeBytes = compactUnwindRowSizeBytesArm64
-	} else {
+	} else if arch == elf.EM_X86_64 {
 		compactUnwindRowSizeBytes = compactUnwindRowSizeBytesX86
+	} else {
+		level.Error(logger).Log("msg", "unknown architecture", "arch", arch)
 	}
 
 	mappingInfoMemory := make([]byte, 0, mappingInfoSizeBytes)

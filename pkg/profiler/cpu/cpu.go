@@ -302,8 +302,9 @@ func loadBPFModules(logger log.Logger, reg prometheus.Registerer, memlockRlimit 
 			pyperfModule: pyperf,
 		}
 
+		arch := getArch()
 		// Maps must be initialized before loading the BPF code.
-		bpfMaps, err := initializeMaps(logger, reg, binary.LittleEndian, runtime.GOARCH, modules)
+		bpfMaps, err := initializeMaps(logger, reg, binary.LittleEndian, arch, modules)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to initialize eBPF maps: %w", err)
 		}
@@ -1173,4 +1174,14 @@ func preprocessRawData(rawData map[profileKey]map[combinedStack]uint64) profile.
 	}
 
 	return res
+}
+
+func getArch() elf.Machine {
+	if runtime.GOARCH == "arm64" {
+		return elf.EM_AARCH64
+	} else if runtime.GOARCH == "amd64" {
+		return elf.EM_X86_64
+	} else {
+		return elf.EM_NONE
+	}
 }
