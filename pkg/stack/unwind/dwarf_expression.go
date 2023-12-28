@@ -44,6 +44,9 @@ var Plt1 = [...]byte{
 	frame.DW_OP_plus,
 }
 
+// var Plt1_arm64
+// var Plt_arm64
+
 // Plt2 is quivalent to: sp + 8 + ((((ip & 15) >= 10)) << 3.
 var Plt2 = [...]byte{
 	frame.DW_OP_breg7,

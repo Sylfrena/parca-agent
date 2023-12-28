@@ -50,6 +50,7 @@ const (
 	DW_OP_skip
 )
 
+// values start with the hex numbers mentioned as per DWARF expressions
 const (
 	DW_OP_lit0 = iota + 0x30
 	DW_OP_lit1
