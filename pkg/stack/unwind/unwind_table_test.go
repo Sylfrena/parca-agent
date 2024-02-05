@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/parca-dev/parca-agent/internal/dwarf/frame"
+	"github.com/parca-dev/parca-agent/pkg/logger"
 )
 
 func TestBuildUnwindTable(t *testing.T) {
@@ -66,13 +67,15 @@ func benchmarkParsingDWARFUnwindInformation(b *testing.B, executable string) {
 
 	var rbpOffset int64
 
+	logger := logger.NewLogger("error", logger.LogFormatLogfmt, "unwind-table-tests")
+
 	for n := 0; n < b.N; n++ {
 		fdes, _, err := ReadFDEs(executable)
 		if err != nil {
 			panic("could not read FDEs")
 		}
 
-		unwindContext := frame.NewContext()
+		unwindContext := frame.NewContext(logger, executable)
 		for _, fde := range fdes {
 			frameContext := frame.ExecuteDWARFProgram(fde, unwindContext)
 			for insCtx := frameContext.Next(); frameContext.HasNext(); insCtx = frameContext.Next() {
